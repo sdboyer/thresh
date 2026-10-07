@@ -1,0 +1,319 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// fixtureSeams mirrors testdata/fixture/.thresh/thresh.cue. Kinds are exercised
+// directly through the uniform contract, so these tests need git but not cue.
+var fixtureSeams = map[string]seam{
+	"lineages":       {Kind: "published-language", Paths: []string{"schemas/*.cue"}, Format: "thema"},
+	"kernel":         {Kind: "shared-kernel", Paths: []string{"kernel.cue"}, Consult: []string{"every consumer of #Kernel", "the Go binding"}},
+	"cue-module":     {Kind: "shared-kernel", Paths: []string{"cue.mod/module.cue"}},
+	"cue-dependency": {Kind: "shared-kernel", Paths: []string{"go.mod"}, Watch: []string{"cuelang.org/go"}},
+	"build":          {Kind: "choke-point", Paths: []string{"*.go"}, Type: "guarded", OnlyIn: []string{"Build"}},
+	"checks":         {Kind: "declared-set", Paths: []string{"bind.go"}, Funcs: "check*", Declared: map[string]string{"checkOne": "first", "checkTwo": "second"}},
+	"binding":        {Kind: "references-resolve", Go: []string{"*.go"}, Cue: []string{"*.cue"}},
+}
+
+// Every kind has at least one loud scenario and one silence scenario. The
+// silence scenarios are not optional: a kind you can't picture staying quiet is
+// one nobody would leave switched on. Each scenario runs on a fresh fixture repo.
+func TestScenarios(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(t *testing.T, dir string)
+		want   []string // substrings of the rendered signals; empty => expect silence
+	}{
+		{
+			"comment-only edit to the kernel is silent",
+			func(t *testing.T, dir string) { appendTo(t, dir, "kernel.cue", "\n// just a comment\n") },
+			nil,
+		},
+		{
+			"breaking major bump is loud",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "schemas/contract.cue",
+					"{version: [1, 0], schema: {b: int}},",
+					"{version: [1, 0], schema: {b: int}},\n\t\t{version: [2, 0], schema: {c: bool}},")
+			},
+			[]string{"[published-language: lineages]", "breaking change", "[1,0] → [2,0]"},
+		},
+		{
+			"compatible minor is a note",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "schemas/contract.cue",
+					"{version: [1, 0], schema: {b: int}},",
+					"{version: [1, 0], schema: {b: int}},\n\t\t{version: [1, 1], schema: {b: int, d?: string}},")
+			},
+			[]string{"[published-language: lineages]", "compatible change", "note"},
+		},
+		{
+			"comment-only edit to the contract is silent",
+			func(t *testing.T, dir string) { appendTo(t, dir, "schemas/contract.cue", "\n// nothing to see\n") },
+			nil,
+		},
+		{
+			"construction outside the choke point is loud",
+			func(t *testing.T, dir string) {
+				write(t, dir, "sneaky.go", "package fixture\n\nfunc Sneaky() *guarded { return &guarded{} }\n")
+			},
+			[]string{"[choke-point: build]", "Sneaky()", "guarded"},
+		},
+		{
+			"construction inside the sanctioned function is silent",
+			func(t *testing.T, dir string) {
+				// parse-only fixture: a construction inside a function named Build
+				write(t, dir, "sanctioned.go", "package fixture\n\nfunc Build() *guarded { return &guarded{v: 1} }\n")
+			},
+			nil,
+		},
+		{
+			"type switch and assertion are not construction",
+			func(t *testing.T, dir string) {
+				write(t, dir, "kindof.go", "package fixture\n\nfunc kindOf(x any) string {\n\tswitch x.(type) {\n\tcase *guarded:\n\t\treturn \"g\"\n\t}\n\t_, _ = x.(*guarded)\n\treturn \"\"\n}\n")
+			},
+			nil,
+		},
+		{
+			"dependency bump and cue.mod change are both loud",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "go.mod", "cuelang.org/go v0.5.0", "cuelang.org/go v0.11.0")
+				appendTo(t, dir, "cue.mod/module.cue", "language: version: \"v0.14.0\"\n")
+			},
+			[]string{"[shared-kernel: cue-dependency]", "cuelang.org/go v0.11.0", "[shared-kernel: cue-module]"},
+		},
+		{
+			"unrelated dependency is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "go.mod", "\tcuelang.org/go v0.5.0\n", "\tcuelang.org/go v0.5.0\n\texample.com/other v1.0.0\n")
+			},
+			nil,
+		},
+		{
+			"field added to the kernel names the definition and the co-owners",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "kernel.cue", "\tname: string\n", "\tname: string\n\tdescription?: string\n")
+			},
+			[]string{"[shared-kernel: kernel]", "#Kernel", "Consult: every consumer of #Kernel; the Go binding"},
+		},
+		{
+			"undeclared check added is loud",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "bind.go", "\nfunc (m *maybe) checkThree() error { return nil }\n")
+			},
+			[]string{"[declared-set: checks]", "checkThree"},
+		},
+		{
+			"body edit of a declared check is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "bind.go", "func (m *maybe) checkOne() error { return nil }",
+					"func (m *maybe) checkOne() error {\n\t_ = m\n\treturn nil\n}")
+			},
+			nil,
+		},
+		{
+			"declared check removed is a note",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "bind.go", "func (m *maybe) checkTwo() error { return nil }\n", "")
+			},
+			[]string{"[declared-set: checks]", "checkTwo no longer exists", "note"},
+		},
+		{
+			"renamed CUE label breaks Go references, including an untouched file",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "kernel.cue", "\tlenses: [...#Lens]", "\tlensList: [...#Lens]")
+			},
+			[]string{"[references-resolve: binding]", `"lenses"`, "bind.go", "other.go", "[shared-kernel: kernel]"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := fixture(t)
+			tc.mutate(t, dir)
+			commitAll(t, dir, "change")
+			got := check(t, dir)
+			if len(tc.want) == 0 {
+				if got != "" {
+					t.Fatalf("expected silence, got:\n%s", got)
+				}
+				return
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("missing %q in:\n%s", w, got)
+				}
+			}
+		})
+	}
+}
+
+// TestAnnotationsValidate exercises the embedded schema through loadConfig: the
+// fixture annotations are accepted and match fixtureSeams; bad ones are rejected
+// with a precise error. Needs cue on PATH.
+func TestAnnotationsValidate(t *testing.T) {
+	if _, err := exec.LookPath("cue"); err != nil {
+		t.Skip("cue not on PATH")
+	}
+	dir := fixture(t)
+	cfg, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range sortedKeys(fixtureSeams) {
+		if _, ok := cfg.Seams[name]; !ok {
+			t.Errorf("fixture .thresh/thresh.cue lacks seam %q declared in fixtureSeams", name)
+		}
+	}
+	for _, name := range sortedKeys(cfg.Seams) {
+		if _, ok := fixtureSeams[name]; !ok {
+			t.Errorf("fixtureSeams lacks seam %q declared in fixture .thresh/thresh.cue", name)
+		}
+	}
+
+	// An unknown kind fails the per-kind disjunction and is named in the error.
+	bad := t.TempDir()
+	write(t, bad, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"frobnicate\", paths: [\"*.go\"]}\n")
+	_, err = loadConfig(bad)
+	if err == nil || !strings.Contains(err.Error(), "invalid .thresh annotations") || !strings.Contains(err.Error(), "frobnicate") {
+		t.Fatalf("expected a validation error naming the bad kind, got: %v", err)
+	}
+
+	// A valid kind with a misspelled field is rejected because every kind's
+	// definition is closed. CUE only reports the field once the kind matches a
+	// branch, which is why this is a separate case from the unknown-kind one.
+	typo := t.TempDir()
+	write(t, typo, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"choke-point\", paths: [\"*.go\"], type: \"x\", onlyIn: [\"f\"], onlyInn: [\"g\"]}\n")
+	_, err = loadConfig(typo)
+	if err == nil || !strings.Contains(err.Error(), "onlyInn") {
+		t.Fatalf("expected a validation error naming the misspelled field, got: %v", err)
+	}
+}
+
+func TestNoSeamsNeverTouchesGit(t *testing.T) {
+	dir := t.TempDir() // not a git repo, no .thresh/
+	if cfg, err := loadConfig(dir); err != nil || len(cfg.Seams) != 0 {
+		t.Fatalf("expected empty config without error, got %v, %v", cfg, err)
+	}
+}
+
+func TestInitScaffold(t *testing.T) {
+	dir := t.TempDir()
+	if err := initRepo(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".thresh", "thresh.cue")); err != nil {
+		t.Fatal(err)
+	}
+	if err := initRepo(dir); err == nil {
+		t.Fatal("expected init to refuse to overwrite an existing .thresh/")
+	}
+}
+
+// --- helpers --------------------------------------------------------------------
+
+// fixture copies testdata/fixture into a fresh temp git repo and commits it.
+func fixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	src, err := filepath.Abs(filepath.Join("testdata", "fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		dst := filepath.Join(dir, rel)
+		if info.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dst, b, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "init", "-q")
+	git(t, dir, "config", "user.email", "thresh@test")
+	git(t, dir, "config", "user.name", "thresh test")
+	git(t, dir, "config", "commit.gpgsign", "false")
+	commitAll(t, dir, "base")
+	return dir
+}
+
+// check runs every fixture seam against HEAD~1..HEAD and renders the signals
+// in a greppable form.
+func check(t *testing.T, dir string) string {
+	t.Helper()
+	cs, err := newChangeset(dir, "HEAD~1..HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for _, name := range sortedKeys(fixtureSeams) {
+		s := fixtureSeams[name]
+		for _, sig := range kinds[s.Kind].assess(name, s, cs) {
+			b.WriteString("[" + sig.Kind + ": " + sig.Seam + "] " + sig.File + " " + sig.Level + ": " + sig.Message + "\n")
+		}
+	}
+	return b.String()
+}
+
+func git(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func commitAll(t *testing.T, dir, msg string) {
+	t.Helper()
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-qm", msg)
+}
+
+func write(t *testing.T, dir, rel, content string) {
+	t.Helper()
+	p := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func appendTo(t *testing.T, dir, rel, s string) {
+	t.Helper()
+	p := filepath.Join(dir, rel)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, rel, string(b)+s)
+}
+
+// replace substitutes old with new exactly once, failing loudly if old is absent
+// so fixture drift is caught rather than silently producing a vacuous scenario.
+func replace(t *testing.T, dir, rel, old, new string) {
+	t.Helper()
+	p := filepath.Join(dir, rel)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), old) {
+		t.Fatalf("%s: fixture drift — %q not found", rel, old)
+	}
+	write(t, dir, rel, strings.Replace(string(b), old, new, 1))
+}
