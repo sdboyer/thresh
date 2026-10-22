@@ -71,6 +71,7 @@ thresh init               # scaffold .thresh/thresh.cue (every kind as an exampl
 thresh check              # uncommitted working tree vs HEAD (includes untracked files)
 thresh check main..HEAD   # a commit range
 thresh check --json
+thresh check --session S --new   # only taps this session hasn't been told about (the delivery hook)
 thresh explain            # render the seams as agent guidance; pipe into AGENTS.md
 ```
 
@@ -78,9 +79,9 @@ Output:
 
 ```
 ## Thresh
-⚑ STEP BACK [published-language: lineages] exemplars/narrowing.cue
+⚑ STEP BACK [published-language: lineages] exemplars/narrowing.cue  #3f9a2c1e7b04
     breaking change: max version [1,0] → [2,0] (major bump). Consumers you don't control depend on this contract.
-· [shared-kernel: lineage-kernel] lineage.cue
+· [shared-kernel: lineage-kernel] lineage.cue  #b81d07e45a2c
     co-owned kernel changed: #Lineage. Consult: every lineage author; the Go facade.
 ```
 
@@ -98,8 +99,49 @@ non-zero only when it *couldn't run* (invalid annotations, not a git repo).
    and free in any directory without `.thresh/`, never blocks, and surfaces a loud
    warning (never silence) if annotations are invalid.
 
+4. **Taps to the agent:** the Stop hook's message reaches only you. Install
+   `hooks/thresh-deliver.sh` for PostToolUse (matcher `Edit|Write|MultiEdit|NotebookEdit`)
+   and UserPromptSubmit (instructions in the script). It hands the agent each tap, with its
+   ID, as context: once per session, and again only if the tap's message changes.
+
 Worktrees, cmux workspaces, other agents: nothing special. It's a CLI over the working
 tree of whatever git repo you're in.
+
+## The tap log: did a tap help?
+
+Every tap carries an ID (`#05d3ff82b7c0` in text, `id` in `--json`), and every `check` that
+taps something appends it to a per-user log: `$THRESH_LOG`, default
+`$XDG_STATE_HOME/thresh/taps.jsonl` (`~/.local/state/...`). A tap's identity is the repo's
+root commit, the base commit, kind, seam, file and level. The same crossing re-checked every
+turn is one tap, even as its message drifts; a new base is a new tap. Each record also carries
+provenance: the origin remote, checkout path, base/head, session and transcript (when the
+hooks pass them), the seam's config hash, and the thresh revision. Events have unique IDs and
+hosts, so logs from many machines merge by concatenation.
+
+Once it's clear whether a tap was useful, whoever knows records a verdict:
+
+```sh
+thresh verdict 05d3ff --by origin --useful yes --evidence "moved the construction into Build"
+thresh verdict 05d3ff --by sweep  --inaccurate  --evidence "Sneaky() constructs *other*, not guarded"
+thresh pending [--repo DIR] [--json]    # taps nobody has given a verdict on
+thresh stats [--json]                   # by kind, repo and seam: delivered, verdicted, yes/no/unclear, inaccurate, useful rate
+```
+
+- **yes**: the tap caused or confirmed something observable: the diff changed, a co-owner
+  was consulted, a version or compatibility decision was revisited, or the crossing was
+  explicitly confirmed as intended.
+- **no**: true, but nothing followed and nothing needed to.
+- **unclear**: can't be determined.
+- **`--inaccurate`**: the tap misstated the diff. That's a bug report, so it's kept out of
+  the useful rate.
+
+`--by` is `origin` (the agent that was tapped), `sweep` (a later reviewer) or `human`. The
+effective verdict is human, then origin, then sweep, and `stats` counts origin/sweep
+disagreements. The protocol is included in every delivery to the agent and in
+`thresh explain`. The `skills/thresh-sweep` Claude Code skill resolves whatever the origin
+agent left pending, from the transcripts and the git history that followed.
+
+Verdicts are judgments, and they never feed back into what `check` reports.
 
 ## Runtime requirements
 
@@ -116,11 +158,15 @@ extract_text.go   format-agnostic extractors: touched(), changed lines, watched 
 extract_go.go     Go extractors (go/parser): funcs, constructions, literal CUE references
 extract_cue.go    CUE extractors: definitions + spans, labels, version tuples (thema)
 kind_*.go         one file per kind; each is extract → trivial decision
+taplog.go         the tap log: tap identity, repo identity, events, delivery
+review.go         verdict / pending / stats over the tap log; the verdict protocol
 explain.go        the consultative surface
 init.go           the scaffold template
 schema/seam.cue   the annotation contract (embedded); one closed definition per kind
-hooks/            the Stop hook script
+hooks/            the Stop hook (to you) and the delivery hook (to the agent)
+skills/           the thresh-sweep skill
 thresh_test.go    the scenarios: every kind, loud and silent, on a fresh fixture repo each
+taplog_test.go    tap identity, logging, delivery, verdicts, pending, stats
 testdata/fixture/ a small synthetic repo the scenarios mutate (needs only git; cue for one test)
 ```
 

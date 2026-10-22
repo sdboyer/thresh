@@ -23,6 +23,7 @@ type changedFile struct {
 }
 
 type signal struct {
+	ID      string `json:"id"`      // the tap's identity in the tap log (taplog.go); never set by a kind
 	Kind    string `json:"kind"`    // the catalog kind
 	Seam    string `json:"seam"`    // the seam's stable name (map key)
 	File    string `json:"file"`    // the file that tripped it ("" if seam-wide)
@@ -70,6 +71,8 @@ type changeset struct {
 	base     string // ref for "before": HEAD in working-tree mode, A in range mode
 	head     string // ref for "after":  "" in working-tree mode (read disk), B in range mode
 	diffspec string // what to pass to `git diff`
+	baseSHA  string // base resolved to a commit
+	headSHA  string // head resolved to a commit; "" in working-tree mode
 	worktree bool
 	changed  []string
 	cache    map[string]*changedFile
@@ -104,7 +107,23 @@ func newChangeset(repo, rng string) (*changeset, error) {
 		u, _ := cs.git("ls-files", "--others", "--exclude-standard")
 		add(u)
 	}
+	if cs.baseSHA, err = cs.resolve(cs.base); err != nil {
+		return nil, err
+	}
+	if !cs.worktree {
+		if cs.headSHA, err = cs.resolve(cs.head); err != nil {
+			return nil, err
+		}
+	}
 	return cs, nil
+}
+
+func (cs *changeset) resolve(ref string) (string, error) {
+	out, err := cs.git("rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve %q to a commit", ref)
+	}
+	return strings.TrimSpace(out), nil
 }
 
 func (cs *changeset) git(args ...string) (string, error) {
