@@ -90,3 +90,11 @@ test loop.
 - Globs are `filepath.Match` (no `**`).
 - In-process CUE (cuelang Go API) only if schema work needs it; shelling out is deliberate.
 - Dogfood: a `.thresh/` for this repo.
+- TypeScript extractors. The ynab-amazon pilot (first TS repo) has two real choke points
+  thresh can't express because `choke-point` reads Go only: all YNAB writes go through one
+  function that holds a dry-run gate, and credentials are read in one function. That repo
+  enforces both with ESLint for now; TS construction/call-site extractors would let
+  `choke-point` own them.
+- `thresh check` fails with "git diff failed: exit status 128" in a repo with no commits
+  (unborn HEAD). It should diff against the empty tree, or say plainly that there's nothing
+  to compare against yet.
