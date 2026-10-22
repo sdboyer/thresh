@@ -58,7 +58,7 @@ you owe **consultation**.
 | `published-language` | a versioned contract changes; its format's compat checker says breaking (loud) or compatible (note). `format: "thema"` today; other formats are plugins. | consequence |
 | `shared-kernel` | co-owned code changes (meaning-bearing changes only); the tap names who to `consult`. `watch` restricts it to changed lines mentioning given strings. | consequence |
 | `choke-point` | a guarded `type` is constructed outside the functions in `onlyIn`, on changed lines. | wrongness |
-| `declared-set` | a function matching `funcs` is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |
+| `declared-set` | a Go function matching `funcs`, or a CUE definition (at any depth) matching `defs`, is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |
 | `references-resolve` | a Go literal reference into CUE (`cue.Str/Def/Hid`) no longer resolves — checked across *all* Go files, since a CUE rename breaks files you never touched. | wrongness |
 
 Comment-only and whitespace-only edits never fire, for any kind.

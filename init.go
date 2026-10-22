@@ -77,6 +77,16 @@ const initTemplate = `package thresh
 // 	}
 // }
 
+// declared-set over CUE definitions (at any depth), instead of Go functions.
+// seams: "kernel-defs": {
+// 	kind:  "declared-set"
+// 	paths: ["schema/*.cue"]
+// 	defs:  "*#*" // hidden definitions are named _#X
+// 	declared: {
+// 		"#Root": "why this must be a definition, not a regular field"
+// 	}
+// }
+
 // references-resolve: Go reaches into CUE by literal path (cue.Str/Def/Hid);
 // every such reference must resolve in the CUE files.
 // seams: "cue-go-binding": {

@@ -38,7 +38,11 @@ func obligation(s seam) string {
 	case "choke-point":
 		return fmt.Sprintf("in %s, only %s may construct %s. Constructing it elsewhere skips what the choke point enforces.", p, strings.Join(s.OnlyIn, "/"), s.Type)
 	case "declared-set":
-		return fmt.Sprintf("the %s functions in %s are an intentional, enumerated set (%d declared). Adding one requires declaring why it belongs.", s.Funcs, p, len(s.Declared))
+		what := s.Funcs + " functions"
+		if s.Defs != "" {
+			what = s.Defs + " definitions"
+		}
+		return fmt.Sprintf("the %s in %s are an intentional, enumerated set (%d declared). Adding one requires declaring why it belongs.", what, p, len(s.Declared))
 	case "references-resolve":
 		return fmt.Sprintf("Go files (%s) reach into CUE files (%s) by literal path; every such reference must resolve.", strings.Join(s.Go, ", "), strings.Join(s.Cue, ", "))
 	}
