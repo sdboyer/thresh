@@ -38,11 +38,17 @@ seams: [string]: #Seam
 
 // An intentional, enumerated set of code elements. Undeclared additions and
 // stale declarations are flagged; element bodies are not this kind's concern.
+// The elements are either Go functions or CUE definitions: exactly one of funcs
+// or defs.
 #DeclaredSet: {
 	kind:     "declared-set"
 	paths:    [...string]
-	funcs:    string            // glob on function name, e.g. "check*"
-	declared: [string]: string  // name -> why it belongs in the set
+	declared: [string]: string // name -> why it belongs in the set
+	{
+		funcs: string // glob on Go function name, e.g. "check*"
+	} | {
+		defs: string // glob on CUE definition name at any depth; hidden ones are _#X, so "*#*" covers both
+	}
 }
 
 // Go reaches into CUE by literal path; fire when a reference no longer resolves.

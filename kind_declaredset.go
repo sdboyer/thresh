@@ -13,24 +13,28 @@ import (
 type declaredSet struct{}
 
 func (declaredSet) assess(name string, s seam, cs *changeset) []signal {
+	glob, elems := s.Funcs, goFuncElements
+	if s.Defs != "" {
+		glob, elems = s.Defs, cueDefElements
+	}
 	var out []signal
 	for _, f := range cs.under(s.Paths) {
 		before := map[string]bool{}
-		for _, fn := range goFuncs(f.Before) {
-			if ok, _ := filepath.Match(s.Funcs, fn.Name); ok {
-				before[fn.Name] = true
+		for _, e := range elems(f.Before) {
+			if ok, _ := filepath.Match(glob, e.name); ok {
+				before[e.name] = true
 			}
 		}
 		after := map[string]bool{}
-		for _, fn := range goFuncs(f.After) {
-			if ok, _ := filepath.Match(s.Funcs, fn.Name); !ok {
+		for _, e := range elems(f.After) {
+			if ok, _ := filepath.Match(glob, e.name); !ok {
 				continue
 			}
-			after[fn.Name] = true
-			if _, declared := s.Declared[fn.Name]; !declared && !before[fn.Name] {
+			after[e.name] = true
+			if _, declared := s.Declared[e.name]; !declared && !before[e.name] {
 				out = append(out, signal{Kind: s.Kind, Seam: name, File: f.Path, Level: "step-back",
 					Message: fmt.Sprintf("undeclared element added: %s (line %d). This set is intentional — declare why it belongs here, or it may not.",
-						fn.Name, fn.Line)})
+						e.name, e.line)})
 			}
 		}
 		for _, d := range sortedKeys(s.Declared) {
@@ -39,6 +43,27 @@ func (declaredSet) assess(name string, s seam, cs *changeset) []signal {
 					Message: fmt.Sprintf("declared element %s no longer exists. Remove it from the declared set (did its rule move elsewhere?).", d)})
 			}
 		}
+	}
+	return out
+}
+
+type element struct {
+	name string
+	line int
+}
+
+func goFuncElements(src string) []element {
+	var out []element
+	for _, fn := range goFuncs(src) {
+		out = append(out, element{fn.Name, fn.Line})
+	}
+	return out
+}
+
+func cueDefElements(src string) []element {
+	var out []element
+	for _, d := range cueDefLabels(src) {
+		out = append(out, element{d.Name, d.Line})
 	}
 	return out
 }

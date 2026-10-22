@@ -43,6 +43,16 @@ seams: checks: {
 	}
 }
 
+seams: shapes: {
+	kind:  "declared-set"
+	paths: ["shapes.cue"]
+	defs:  "*#*"
+	declared: {
+		"#Shape": "closed shape"
+		"#Edge":  "closed edge"
+	}
+}
+
 seams: binding: {
 	kind: "references-resolve"
 	go:   ["*.go"]

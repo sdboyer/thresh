@@ -11,9 +11,10 @@ import (
 )
 
 var (
-	cueDefRE   = regexp.MustCompile(`^(#[A-Za-z_][A-Za-z0-9_]*):`)
-	cueLabelRE = regexp.MustCompile(`^\s*(_?#?[A-Za-z_][A-Za-z0-9_]*)[?!]?:`)
-	themaVerRE = regexp.MustCompile(`version:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]`)
+	cueDefRE    = regexp.MustCompile(`^(#[A-Za-z_][A-Za-z0-9_]*):`)
+	cueLabelRE  = regexp.MustCompile(`^\s*(_?#?[A-Za-z_][A-Za-z0-9_]*)[?!]?:`)
+	cueAnyDefRE = regexp.MustCompile(`^\s*(_?#[A-Za-z_][A-Za-z0-9_]*)[?!]?:`)
+	themaVerRE  = regexp.MustCompile(`version:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]`)
 )
 
 type cueDef struct {
@@ -37,6 +38,26 @@ func cueDefinitions(src string) []cueDef {
 			d.End = j + 1
 		}
 		out = append(out, d)
+	}
+	return out
+}
+
+// cueDefLabel is a definition (#X) or hidden definition (_#X) declared at any
+// depth, by the line its label starts.
+type cueDefLabel struct {
+	Name string
+	Line int
+}
+
+// cueDefLabels finds every definition label in a CUE source, nested ones
+// included: a definition inside a struct opens the same closedness question as
+// a top-level one. A label must start its line, as formatted CUE has it.
+func cueDefLabels(src string) []cueDefLabel {
+	var out []cueDefLabel
+	for i, l := range strings.Split(src, "\n") {
+		if m := cueAnyDefRE.FindStringSubmatch(l); m != nil {
+			out = append(out, cueDefLabel{Name: m[1], Line: i + 1})
+		}
 	}
 	return out
 }

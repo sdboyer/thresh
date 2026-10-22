@@ -17,6 +17,7 @@ var fixtureSeams = map[string]seam{
 	"cue-dependency": {Kind: "shared-kernel", Paths: []string{"go.mod"}, Watch: []string{"cuelang.org/go"}},
 	"build":          {Kind: "choke-point", Paths: []string{"*.go"}, Type: "guarded", OnlyIn: []string{"Build"}},
 	"checks":         {Kind: "declared-set", Paths: []string{"bind.go"}, Funcs: "check*", Declared: map[string]string{"checkOne": "first", "checkTwo": "second"}},
+	"shapes":         {Kind: "declared-set", Paths: []string{"shapes.cue"}, Defs: "*#*", Declared: map[string]string{"#Shape": "shape", "#Edge": "edge"}},
 	"binding":        {Kind: "references-resolve", Go: []string{"*.go"}, Cue: []string{"*.cue"}},
 }
 
@@ -115,6 +116,32 @@ func TestScenarios(t *testing.T) {
 					"func (m *maybe) checkOne() error {\n\t_ = m\n\treturn nil\n}")
 			},
 			nil,
+		},
+		{
+			"undeclared CUE definition added, nested, is loud",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "shapes.cue", "\tname: string\n", "\tname: string\n\t#Helper: string\n")
+			},
+			[]string{"[declared-set: shapes]", "#Helper"},
+		},
+		{
+			"undeclared hidden CUE definition added is loud",
+			func(t *testing.T, dir string) { appendTo(t, dir, "shapes.cue", "\n_#Scratch: {}\n") },
+			[]string{"[declared-set: shapes]", "_#Scratch"},
+		},
+		{
+			"regular field added to a declared CUE definition is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "shapes.cue", "\tname: string\n", "\tname: string\n\tnote?: string\n")
+			},
+			nil,
+		},
+		{
+			"declared CUE definition removed is a note",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "shapes.cue", "\n#Edge: {\n\tfrom: string\n\tto:   string\n}\n", "\n")
+			},
+			[]string{"[declared-set: shapes]", "#Edge no longer exists", "note"},
 		},
 		{
 			"declared check removed is a note",
