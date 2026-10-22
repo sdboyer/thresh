@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Thresh's reportorial surface: a Claude Code Stop hook. At the end of a turn it
 # taps the shoulder about consequential boundaries the working tree touched.
+# systemMessage reaches the human only; thresh-deliver.sh is what tells the agent.
 #
 # Safe to install GLOBALLY (~/.claude/settings.json): it is silent and free in any
 # directory without a .thresh/, and it never blocks -- notify, not gate.
@@ -19,6 +20,8 @@ if [ "$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')" = "true" ]; 
 fi
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // "."')
+SESSION=$(printf '%s' "$INPUT" | jq -r '.session_id // ""')
+TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // ""')
 
 # Not a thresh repo: nothing to say, and don't even look for the binary.
 [ -d "$CWD/.thresh" ] || exit 0
@@ -41,7 +44,7 @@ COH=$(find_thresh) || {
 
 ERRFILE=$(mktemp)
 trap 'rm -f "$ERRFILE"' EXIT
-OUT=$("$COH" check --repo "$CWD" 2>"$ERRFILE")
+OUT=$("$COH" check --repo "$CWD" --session "$SESSION" --transcript "$TRANSCRIPT" 2>"$ERRFILE")
 RC=$?
 ERR=$(cat "$ERRFILE")
 
@@ -51,8 +54,16 @@ if [ "$RC" -ne 0 ]; then
   exit 0
 fi
 
-# Surface only when there are actual signals; stay silent otherwise.
+# Surface only when there are actual signals, or a warning (e.g. the tap log
+# couldn't be written); stay silent otherwise.
+MSG=""
 if printf '%s' "$OUT" | grep -q '## Thresh'; then
-  jq -n --arg msg "$OUT" '{systemMessage: $msg}'
+  MSG="$OUT"
+fi
+if [ -n "$ERR" ]; then
+  MSG="${MSG:+$MSG$'\n'}⚠️ $ERR"
+fi
+if [ -n "$MSG" ]; then
+  jq -n --arg msg "$MSG" '{systemMessage: $msg}'
 fi
 exit 0

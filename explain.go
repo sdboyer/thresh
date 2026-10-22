@@ -8,7 +8,8 @@ import (
 // explain renders the repo's seams as guidance for an agent: what is watched and
 // what a change there obliges. Generated from the annotations so it cannot drift
 // from them; meant for an AGENTS.md section so the agent consults thresh
-// mid-task, not only at the Stop hook.
+// mid-task, not only at the Stop hook. It ends with the verdict protocol, so the
+// repo carries the rubric for recording whether a tap helped.
 func explain(cfg config) {
 	fmt.Println("## Thresh seams")
 	fmt.Println()
@@ -19,6 +20,8 @@ func explain(cfg config) {
 		s := cfg.Seams[name]
 		fmt.Printf("- **%s** (`%s`): %s\n", name, s.Kind, obligation(s))
 	}
+	fmt.Println()
+	fmt.Print(protocol)
 }
 
 func obligation(s seam) string {

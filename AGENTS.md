@@ -40,8 +40,8 @@ If a change needs one of these relaxed, stop and raise it instead.
 
 6. **Naming.** Use a DDD term only when the check *is* the concept (`published-language`,
    `shared-kernel`). When the check is narrower, name the check (`choke-point`, not
-   "anti-corruption-layer"). The user-facing vocabulary is exactly: seam, paths, kind, and
-   the kind names. Internal words (extent, projection, predicate, extractor, node/edge) stay
+   "anti-corruption-layer"). The user-facing vocabulary is exactly: seam, paths, kind, the
+   kind names, tap, and verdict. Internal words (extent, projection, predicate, extractor, node/edge) stay
    internal.
 
 7. **The schema is the single source.** `schema/seam.cue` is embedded and unified with
@@ -53,6 +53,12 @@ If a change needs one of these relaxed, stop and raise it instead.
    consequence kinds. `published-language` requires a declared or checkable compatibility
    signal (a `format` with a compat extractor); without one, it is a `shared-kernel`.
    Severity is **read, never inferred**: `shared-kernel` is flat on purpose.
+
+9. **Verdicts are a separate judgment channel.** The tap log (`taplog.go`, `review.go`)
+   records whether a tap helped. Those verdicts are judgments, so they never suppress,
+   reweight, reorder or otherwise affect a signal. `check`'s output and exit code never
+   depend on the log: a log that can't be written or read is a warning, and every tap
+   still prints.
 
 ## Dropped on purpose — do not reintroduce
 
@@ -95,6 +101,10 @@ test loop.
   function that holds a dry-run gate, and credentials are read in one function. That repo
   enforces both with ESLint for now; TS construction/call-site extractors would let
   `choke-point` own them.
+- The tap log is read in full on every `check --new` (each edit, via the delivery hook).
+  Fine at current volumes; compaction or an index when it isn't.
+- A worktree-mode run and a range-mode run over the same change resolve different bases,
+  so they log the same crossing under different tap IDs.
 - `thresh check` fails with "git diff failed: exit status 128" in a repo with no commits
   (unborn HEAD). It should diff against the empty tree, or say plainly that there's nothing
   to compare against yet.
