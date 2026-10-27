@@ -28,6 +28,9 @@ func obligation(s seam) string {
 	p := strings.Join(s.Paths, ", ")
 	switch s.Kind {
 	case "published-language":
+		if s.Format == "golden" {
+			return fmt.Sprintf("%s is recorded output that consumers you cannot enumerate depend on. A change that moves it owes them compatibility, and is loud even when correct.", p)
+		}
 		return fmt.Sprintf("%s is a versioned contract for consumers you cannot enumerate. A change owes them compatibility; a breaking change is loud even when correct.", p)
 	case "shared-kernel":
 		who := "its co-owners"

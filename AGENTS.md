@@ -91,6 +91,8 @@ test loop.
 
 - Extractor return types are loose; tidying them is wanted before the library grows.
 - `published-language` compat plugins beyond thema (`buf breaking`, `oasdiff`, …).
+- `published-language` `thema`: deleting a contract file is silent (`golden` treats a
+  deletion as a step-back).
 - `references-resolve`: a softer note when a *referenced* CUE element changes and the Go
   side didn't.
 - Globs are `filepath.Match` (no `**`).
