@@ -2,26 +2,27 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
-// explain renders the repo's seams as guidance for an agent: what is watched and
-// what a change there obliges. Generated from the annotations so it cannot drift
+// explain renders the repo's seams as guidance for an agent: why each exists (its
+// purpose, in the author's words), what is watched, and what a change there obliges. Generated from the annotations so it cannot drift
 // from them; meant for an AGENTS.md section so the agent consults thresh
 // mid-task, not only at the Stop hook. It ends with the verdict protocol, so the
 // repo carries the rubric for recording whether a tap helped.
-func explain(cfg config) {
-	fmt.Println("## Thresh seams")
-	fmt.Println()
-	fmt.Println("Before finalizing an approach that touches any of these, run `thresh check` and")
-	fmt.Println("read the taps. They are facts about your diff, not opinions, and they never block.")
-	fmt.Println()
+func explain(w io.Writer, cfg config) {
+	fmt.Fprintln(w, "## Thresh seams")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Before finalizing an approach that touches any of these, run `thresh check` and")
+	fmt.Fprintln(w, "read the taps. They are facts about your diff, not opinions, and they never block.")
+	fmt.Fprintln(w)
 	for _, name := range sortedKeys(cfg.Seams) {
 		s := cfg.Seams[name]
-		fmt.Printf("- **%s** (`%s`): %s\n", name, s.Kind, obligation(s))
+		fmt.Fprintf(w, "- **%s** (`%s`): %s\n  %s\n", name, s.Kind, s.Purpose, obligation(s))
 	}
-	fmt.Println()
-	fmt.Print(protocol)
+	fmt.Fprintln(w)
+	fmt.Fprint(w, protocol)
 }
 
 func obligation(s seam) string {

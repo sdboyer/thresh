@@ -30,22 +30,26 @@ const initTemplate = `package thresh
 // Thresh annotations for this repo. Data only: the #Seam schema lives in the
 // thresh binary and validates this file at load (no import needed).
 //
-// A seam is paths + kind. paths are plain globs; the kind decides what to look
-// for. Every seam below is a commented example -- keep the ones that apply.
+// A seam is a purpose, paths and a kind. purpose says why the seam exists, in
+// your words: it is required, and thresh explain renders it, so it belongs here
+// rather than in AGENTS.md prose. paths are plain globs; the kind decides what
+// to look for. Every seam below is a commented example -- keep the ones that apply.
 // Then run 'thresh explain' to render these as guidance for agents.
 
 // published-language: a versioned contract for consumers you CANNOT enumerate.
 // You owe them compatibility; a breaking change is loud even when correct.
 // Needs a format with a compatibility checker (thema today).
 // seams: "my-contract": {
-// 	kind:   "published-language"
-// 	paths:  ["schemas/*.cue"]
-// 	format: "thema"
+// 	kind:    "published-language"
+// 	purpose: "clients we don't ship decode these; a breaking change strands them"
+// 	paths:   ["schemas/*.cue"]
+// 	format:  "thema"
 // }
 
 // shared-kernel: code co-owned by contexts you CAN name. You owe them consultation.
 // seams: "core-types": {
 // 	kind:    "shared-kernel"
+// 	purpose: "the API and storage layers both build on these types"
 // 	paths:   ["pkg/core/types.go"]
 // 	consult: ["the API layer", "the storage layer"]
 // }
@@ -53,6 +57,7 @@ const initTemplate = `package thresh
 // shared-kernel with watch: only changed lines mentioning these count.
 // seams: "db-driver": {
 // 	kind:    "shared-kernel"
+// 	purpose: "every query is written against this driver's behavior"
 // 	paths:   ["go.mod"]
 // 	watch:   ["github.com/jackc/pgx"]
 // 	consult: ["every query in pkg/storage"]
@@ -60,18 +65,20 @@ const initTemplate = `package thresh
 
 // choke-point: all construction of a type goes through the named functions.
 // seams: "connections": {
-// 	kind:   "choke-point"
-// 	paths:  ["*.go"]
-// 	type:   "conn"
-// 	onlyIn: ["Open"]
+// 	kind:    "choke-point"
+// 	purpose: "Open sets the timeouts and TLS config every connection needs"
+// 	paths:   ["*.go"]
+// 	type:    "conn"
+// 	onlyIn:  ["Open"]
 // }
 
 // declared-set: an intentional, enumerated set of functions. An undeclared
 // addition is flagged; a declared one that disappears is noted.
 // seams: "validators": {
-// 	kind:  "declared-set"
-// 	paths: ["validate.go"]
-// 	funcs: "check*"
+// 	kind:    "declared-set"
+// 	purpose: "validation belongs in the schema; each Go check is an exception"
+// 	paths:   ["validate.go"]
+// 	funcs:   "check*"
 // 	declared: {
 // 		checkShape: "why this rule is enforced here and nowhere else"
 // 	}
@@ -79,9 +86,10 @@ const initTemplate = `package thresh
 
 // declared-set over CUE definitions (at any depth), instead of Go functions.
 // seams: "kernel-defs": {
-// 	kind:  "declared-set"
-// 	paths: ["schema/*.cue"]
-// 	defs:  "*#*" // hidden definitions are named _#X
+// 	kind:    "declared-set"
+// 	purpose: "definitions close everything that flows through them"
+// 	paths:   ["schema/*.cue"]
+// 	defs:    "*#*" // hidden definitions are named _#X
 // 	declared: {
 // 		"#Root": "why this must be a definition, not a regular field"
 // 	}
@@ -90,8 +98,9 @@ const initTemplate = `package thresh
 // references-resolve: Go reaches into CUE by literal path (cue.Str/Def/Hid);
 // every such reference must resolve in the CUE files.
 // seams: "cue-go-binding": {
-// 	kind: "references-resolve"
-// 	go:   ["*.go"]
-// 	cue:  ["*.cue"]
+// 	kind:    "references-resolve"
+// 	purpose: "the Go side reads the CUE by literal path"
+// 	go:      ["*.go"]
+// 	cue:     ["*.cue"]
 // }
 `

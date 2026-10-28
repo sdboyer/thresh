@@ -40,8 +40,8 @@ If a change needs one of these relaxed, stop and raise it instead.
 
 6. **Naming.** Use a DDD term only when the check *is* the concept (`published-language`,
    `shared-kernel`). When the check is narrower, name the check (`choke-point`, not
-   "anti-corruption-layer"). The user-facing vocabulary is exactly: seam, paths, kind, the
-   kind names, tap, and verdict. Internal words (extent, projection, predicate, extractor, node/edge) stay
+   "anti-corruption-layer"). The user-facing vocabulary is exactly: seam, purpose, paths,
+   kind, the kind names, tap, and verdict. Internal words (extent, projection, predicate, extractor, node/edge) stay
    internal.
 
 7. **The schema is the single source.** `schema/seam.cue` is embedded and unified with

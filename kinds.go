@@ -35,6 +35,7 @@ type signal struct {
 // disjunction) enforces which fields apply to which kind, so Go just reads them.
 type seam struct {
 	Kind     string            `json:"kind"`
+	Purpose  string            `json:"purpose"` // every kind: why the seam exists
 	Paths    []string          `json:"paths"`
 	Format   string            `json:"format"`   // published-language: compat extractor
 	Consult  []string          `json:"consult"`  // shared-kernel: co-owners to consult

@@ -204,7 +204,7 @@ func TestAnnotationsValidate(t *testing.T) {
 
 	// An unknown kind fails the per-kind disjunction and is named in the error.
 	bad := t.TempDir()
-	write(t, bad, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"frobnicate\", paths: [\"*.go\"]}\n")
+	write(t, bad, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"frobnicate\", purpose: \"p\", paths: [\"*.go\"]}\n")
 	_, err = loadConfig(bad)
 	if err == nil || !strings.Contains(err.Error(), "invalid .thresh annotations") || !strings.Contains(err.Error(), "frobnicate") {
 		t.Fatalf("expected a validation error naming the bad kind, got: %v", err)
@@ -214,10 +214,29 @@ func TestAnnotationsValidate(t *testing.T) {
 	// definition is closed. CUE only reports the field once the kind matches a
 	// branch, which is why this is a separate case from the unknown-kind one.
 	typo := t.TempDir()
-	write(t, typo, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"choke-point\", paths: [\"*.go\"], type: \"x\", onlyIn: [\"f\"], onlyInn: [\"g\"]}\n")
+	write(t, typo, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"choke-point\", purpose: \"p\", paths: [\"*.go\"], type: \"x\", onlyIn: [\"f\"], onlyInn: [\"g\"]}\n")
 	_, err = loadConfig(typo)
 	if err == nil || !strings.Contains(err.Error(), "onlyInn") {
 		t.Fatalf("expected a validation error naming the misspelled field, got: %v", err)
+	}
+
+	// Every seam must say why it exists: a missing or empty purpose is rejected.
+	for name, body := range map[string]string{
+		"missing purpose": `{kind: "shared-kernel", paths: ["x.go"]}`,
+		"empty purpose":   `{kind: "shared-kernel", purpose: "", paths: ["x.go"]}`,
+	} {
+		bare := t.TempDir()
+		write(t, bare, ".thresh/thresh.cue", "package thresh\nseams: oops: "+body+"\n")
+		if _, err := loadConfig(bare); err == nil || !strings.Contains(err.Error(), "purpose") {
+			t.Errorf("%s: expected a validation error naming purpose, got: %v", name, err)
+		}
+	}
+
+	// explain renders each seam's purpose ahead of its obligation.
+	var b strings.Builder
+	explain(&b, cfg)
+	if !strings.Contains(b.String(), "- **kernel** (`shared-kernel`): #Kernel is what both the CUE and Go sides stand on\n  kernel.cue is co-owned kernel.") {
+		t.Errorf("explain lacks the kernel seam's purpose:\n%s", b.String())
 	}
 }
 

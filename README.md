@@ -21,25 +21,30 @@ A tap fires for one of two reasons, and the label says which:
   breaking change to a published contract still fires. No linter serves this cell.
 - **wrongness** — the change is probably a mistake (a guard was bypassed).
 
-## The model: a seam is `paths` + `kind`
+## The model: a seam is `purpose` + `paths` + `kind`
 
 ```cue
 // .thresh/thresh.cue  — data only; the schema is in the binary
 package thresh
 
 seams: lineages: {
-	kind:   "published-language"
-	paths:  ["exemplars/*.cue"]
-	format: "thema"
+	kind:    "published-language"
+	purpose: "every lineage is a versioned contract its consumers bind to"
+	paths:   ["exemplars/*.cue"]
+	format:  "thema"
 }
 seams: bindlineage: {
-	kind:   "choke-point"
-	paths:  ["*.go"]
-	type:   "baseLineage"
-	onlyIn: ["BindLineage"]
+	kind:    "choke-point"
+	purpose: "BindLineage is where a lineage's validity is established"
+	paths:   ["*.go"]
+	type:    "baseLineage"
+	onlyIn:  ["BindLineage"]
 }
 ```
 
+- **`purpose`** says why the seam exists, in your words. It's required, and `thresh explain`
+  renders it under the seam, so the reason lives with the seam instead of in AGENTS.md
+  prose that drifts from it.
 - **`paths`** are plain globs. Deliberately dumb — precision is never the glob's job.
 - **`kind`** is an analyzer from the catalog below. It decides what to look for in the
   files under its paths and whether to fire.
