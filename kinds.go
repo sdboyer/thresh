@@ -38,6 +38,8 @@ type seam struct {
 	Purpose  string            `json:"purpose"` // every kind: why the seam exists
 	Paths    []string          `json:"paths"`
 	Format   string            `json:"format"`   // published-language: compat extractor
+	Section  string            `json:"section"`  // published-language golden: txtar section holding the output
+	Headline bool              `json:"headline"` // published-language golden: first line of the output is its headline
 	Consult  []string          `json:"consult"`  // shared-kernel: co-owners to consult
 	Watch    []string          `json:"watch"`    // shared-kernel: only changed lines containing these
 	Type     string            `json:"type"`     // choke-point: the guarded type

@@ -66,3 +66,12 @@ seams: binding: {
 	go:      ["*.go"]
 	cue:     ["*.cue"]
 }
+
+seams: verdicts: {
+	kind:     "published-language"
+	purpose:  "the corpus records verdicts that downstream tools match on"
+	paths:    ["corpus/*.txtar"]
+	format:   "golden"
+	section:  "out"
+	headline: true
+}

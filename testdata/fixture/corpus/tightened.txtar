@@ -1,0 +1,8 @@
+# a rule's recorded verdict (thema-shaped: the first line of out is the verdict)
+-- old.cue --
+s: string
+-- new.cue --
+s: "a" | "b"
+-- out --
+incompatible
+s narrowed from string to a disjunction (rule narrowed) @ new.cue:1:1

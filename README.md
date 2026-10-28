@@ -60,7 +60,7 @@ you owe **consultation**.
 
 | kind | fires when | fires on |
 |---|---|---|
-| `published-language` | a versioned contract changes; its format's compat checker says breaking (loud) or compatible (note). `format: "thema"` today; other formats are plugins. | consequence |
+| `published-language` | a versioned contract changes; its format says breaking (loud) or compatible (note). `format: "thema"` reads declared version tuples. `format: "golden"` treats recorded output (a whole file, or a txtar `section`) as the contract: a moved output is loud, a new one is a note, and with `headline: true` only a moved first line is loud. A covered file the format can read nothing from gets a note: the seam is misconfigured. | consequence |
 | `shared-kernel` | co-owned code changes (meaning-bearing changes only); the tap names who to `consult`. `watch` restricts it to changed lines mentioning given strings. | consequence |
 | `choke-point` | a guarded `type` is constructed outside the functions in `onlyIn`, on changed lines. | wrongness |
 | `declared-set` | a Go function matching `funcs`, or a CUE definition (at any depth) matching `defs`, is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |

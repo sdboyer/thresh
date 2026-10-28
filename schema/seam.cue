@@ -18,12 +18,19 @@ seams: [string]: #Seam
 #Seam: #PublishedLanguage | #SharedKernel | #ChokePoint | #DeclaredSet | #ReferencesResolve
 
 // A contract for consumers you cannot enumerate. You owe them compatibility, so
-// the tap is a compatibility verdict from the format's own checker.
+// the tap is a compatibility verdict read from the format. Other formats
+// (protobuf, openapi, ...) are to add.
 #PublishedLanguage: {
 	kind:    "published-language"
 	purpose: #Purpose
 	paths:   [...string]
-	format:  "thema" // compat extractor; other formats (protobuf, openapi, ...) are plugins to add
+	{
+		format: "thema" // the version tuples thema makes authors declare
+	} | {
+		format:    "golden" // the contract is recorded output, e.g. a checker's verdict corpus
+		section?:  string   // the txtar section holding the output; the whole file if absent
+		headline?: bool     // the output's first line is its headline: a moved headline is loud, other changes a note
+	}
 }
 
 // Code co-owned by contexts you can name. You owe them consultation.
