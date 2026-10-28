@@ -43,6 +43,18 @@ const initTemplate = `package thresh
 // 	format: "thema"
 // }
 
+// published-language over a golden corpus: the contract is recorded output, such
+// as a checker's verdicts. section names the txtar section holding it (omit for
+// the whole file); headline says its first line is the verdict, so a moved
+// headline is loud and a reworded rest is a note.
+// seams: "verdict-corpus": {
+// 	kind:     "published-language"
+// 	paths:    ["testdata/*.txtar"]
+// 	format:   "golden"
+// 	section:  "out"
+// 	headline: true
+// }
+
 // shared-kernel: code co-owned by contexts you CAN name. You owe them consultation.
 // seams: "core-types": {
 // 	kind:    "shared-kernel"

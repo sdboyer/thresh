@@ -12,6 +12,7 @@ import (
 // directly through the uniform contract, so these tests need git but not cue.
 var fixtureSeams = map[string]seam{
 	"lineages":       {Kind: "published-language", Paths: []string{"schemas/*.cue"}, Format: "thema"},
+	"verdicts":       {Kind: "published-language", Paths: []string{"corpus/*.txtar"}, Format: "golden", Section: "out", Headline: true},
 	"kernel":         {Kind: "shared-kernel", Paths: []string{"kernel.cue"}, Consult: []string{"every consumer of #Kernel", "the Go binding"}},
 	"cue-module":     {Kind: "shared-kernel", Paths: []string{"cue.mod/module.cue"}},
 	"cue-dependency": {Kind: "shared-kernel", Paths: []string{"go.mod"}, Watch: []string{"cuelang.org/go"}},
@@ -56,6 +57,64 @@ func TestScenarios(t *testing.T) {
 		{
 			"comment-only edit to the contract is silent",
 			func(t *testing.T, dir string) { appendTo(t, dir, "schemas/contract.cue", "\n// nothing to see\n") },
+			nil,
+		},
+		{
+			"a contract file the format reads no versions from is noted as a misconfiguration",
+			func(t *testing.T, dir string) {
+				write(t, dir, "schemas/notes.cue", "package fixture\n\nnotes: \"no versions here\"\n")
+			},
+			[]string{"[published-language: lineages] schemas/notes.cue", "found no versions", "note"},
+		},
+		{
+			"a moved recorded headline is loud",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "corpus/tightened.txtar", "-- out --\nincompatible\n", "-- out --\ncompatible\n")
+			},
+			[]string{"[published-language: verdicts]", "step-back", `headline moved: "incompatible" → "compatible"`},
+		},
+		{
+			"reworded output under an unchanged headline is a note",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "corpus/tightened.txtar", "(rule narrowed)", "(rule disjunction-narrowed)")
+			},
+			[]string{"[published-language: verdicts]", "note", `reworded; headline "incompatible" unchanged`},
+		},
+		{
+			"an input-only edit with the same recorded output is a note",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "corpus/tightened.txtar", "s: \"a\" | \"b\"", "s: \"a\" | \"c\"")
+			},
+			[]string{"[published-language: verdicts]", "note", "recorded output unchanged"},
+		},
+		{
+			"a new recorded output is a note that the contract grew",
+			func(t *testing.T, dir string) {
+				write(t, dir, "corpus/widened.txtar", "-- old.cue --\ns: \"a\"\n-- new.cue --\ns: string\n-- out --\ncompatible\n")
+			},
+			[]string{"[published-language: verdicts] corpus/widened.txtar", "note", `contract grew: new recorded output (headline "compatible")`},
+		},
+		{
+			"a removed recorded output is loud",
+			func(t *testing.T, dir string) {
+				if err := os.Remove(filepath.Join(dir, "corpus", "tightened.txtar")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			[]string{"[published-language: verdicts] corpus/tightened.txtar", "step-back", "recorded output removed"},
+		},
+		{
+			"a golden file without the declared section is noted as a misconfiguration",
+			func(t *testing.T, dir string) {
+				write(t, dir, "corpus/broken.txtar", "-- old.cue --\ns: string\n-- output --\ncompatible\n")
+			},
+			[]string{"[published-language: verdicts] corpus/broken.txtar", "note", `no "out" section`},
+		},
+		{
+			"whitespace-only edit to a golden file is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "corpus/tightened.txtar", "s: string\n", "s:   string\n")
+			},
 			nil,
 		},
 		{
