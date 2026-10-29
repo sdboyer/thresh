@@ -23,23 +23,20 @@ A tap fires for one of two reasons, and the label says which:
 
 ## The model: a seam is `purpose` + `paths` + `kind`
 
-```cue
-// .thresh/thresh.cue  — data only; the schema is in the binary
-package thresh
-
-seams: lineages: {
-	kind:    "published-language"
-	purpose: "every lineage is a versioned contract its consumers bind to"
-	paths:   ["exemplars/*.cue"]
-	format:  "thema"
-}
-seams: bindlineage: {
-	kind:    "choke-point"
-	purpose: "BindLineage is where a lineage's validity is established"
-	paths:   ["*.go"]
-	type:    "baseLineage"
-	onlyIn:  ["BindLineage"]
-}
+```yaml
+# .thresh/thresh.yaml
+seams:
+  lineages:
+    kind: published-language
+    purpose: every lineage is a versioned contract its consumers bind to
+    paths: ["exemplars/*.cue"]
+    format: thema
+  bindlineage:
+    kind: choke-point
+    purpose: BindLineage is where a lineage's validity is established
+    paths: ["*.go"]
+    type: baseLineage
+    onlyIn: [BindLineage]
 ```
 
 - **`purpose`** says why the seam exists, in your words. It's required, and `thresh explain`
@@ -49,8 +46,11 @@ seams: bindlineage: {
 - **`kind`** is an analyzer from the catalog below. It decides what to look for in the
   files under its paths and whether to fire.
 
-That's everything a user specifies. Seams are keyed by name so files compose by CUE
-unification and taps carry a stable name. Reuse a path set the CUE way (`_go: [...]`).
+That's everything a user specifies. Each kind takes a fixed set of fields, so a typo or
+a field from another kind is rejected at load, with its file and line. Seams are keyed by
+name so taps carry a stable name, and every `.thresh/*.yaml` is read: split seams across
+files as you like, but a name declared twice is an error. Reuse a path set with a YAML
+anchor (`paths: &go ["*.go"]`, then `go: *go`).
 
 ## The catalog
 
@@ -72,7 +72,7 @@ Comment-only and whitespace-only edits never fire, for any kind.
 
 ```sh
 go install .                 # from this checkout; puts `thresh` on PATH
-thresh init               # scaffold .thresh/thresh.cue (every kind as an example)
+thresh init               # scaffold .thresh/thresh.yaml (every kind as an example)
 thresh check              # uncommitted working tree vs HEAD (includes untracked files)
 thresh check main..HEAD   # a commit range
 thresh check --json
@@ -150,14 +150,14 @@ Verdicts are judgments, and they never feed back into what `check` reports.
 
 ## Runtime requirements
 
-`git`; `cue` (only to export annotations — the per-kind `#Seam` schema is embedded in the
-binary and unified with your data at load, so bad kinds and typo'd fields are rejected
-with a precise error); Go stdlib (`go/parser` for Go analysis; the target need not build).
+`git`. Nothing else: annotations are YAML, validated in Go (`go.yaml.in/yaml/v3` is the one
+dependency), and analysis uses `go/parser` (the target need not build).
 
 ## Layout
 
 ```
-main.go           CLI: check / explain / init; loads + validates annotations
+main.go           CLI: check / explain / init
+config.go         loads .thresh/*.yaml; each kind's closed field set, and validation
 kinds.go          the uniform contract every kind satisfies, and the changeset (from git)
 extract_text.go   format-agnostic extractors: touched(), changed lines, watched substrings
 extract_go.go     Go extractors (go/parser): funcs, constructions, literal CUE references
@@ -167,12 +167,11 @@ taplog.go         the tap log: tap identity, repo identity, events, delivery
 review.go         verdict / pending / stats over the tap log; the verdict protocol
 explain.go        the consultative surface
 init.go           the scaffold template
-schema/seam.cue   the annotation contract (embedded); one closed definition per kind
 hooks/            the Stop hook (to you) and the delivery hook (to the agent)
 skills/           the thresh-sweep skill
 thresh_test.go    the scenarios: every kind, loud and silent, on a fresh fixture repo each
 taplog_test.go    tap identity, logging, delivery, verdicts, pending, stats
-testdata/fixture/ a small synthetic repo the scenarios mutate (needs only git; cue for one test)
+testdata/fixture/ a small synthetic repo the scenarios mutate (needs only git)
 ```
 
 Verify with `go test ./...`.
