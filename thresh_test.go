@@ -4,11 +4,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-// fixtureSeams mirrors testdata/fixture/.thresh/thresh.cue. Kinds are exercised
+// fixtureSeams mirrors testdata/fixture/.thresh/thresh.yaml. Kinds are exercised
 // directly through the uniform contract, so these tests need git but not cue.
 var fixtureSeams = map[string]seam{
 	"lineages":       {Kind: "published-language", Paths: []string{"schemas/*.cue"}, Format: "thema"},
@@ -17,8 +18,8 @@ var fixtureSeams = map[string]seam{
 	"cue-module":     {Kind: "shared-kernel", Paths: []string{"cue.mod/module.cue"}},
 	"cue-dependency": {Kind: "shared-kernel", Paths: []string{"go.mod"}, Watch: []string{"cuelang.org/go"}},
 	"build":          {Kind: "choke-point", Paths: []string{"*.go"}, Type: "guarded", OnlyIn: []string{"Build"}},
-	"checks":         {Kind: "declared-set", Paths: []string{"bind.go"}, Funcs: "check*", Declared: map[string]string{"checkOne": "first", "checkTwo": "second"}},
-	"shapes":         {Kind: "declared-set", Paths: []string{"shapes.cue"}, Defs: "*#*", Declared: map[string]string{"#Shape": "shape", "#Edge": "edge"}},
+	"checks":         {Kind: "declared-set", Paths: []string{"bind.go"}, Funcs: "check*", Declared: map[string]string{"checkOne": "first declared check", "checkTwo": "second declared check"}},
+	"shapes":         {Kind: "declared-set", Paths: []string{"shapes.cue"}, Defs: "*#*", Declared: map[string]string{"#Shape": "closed shape", "#Edge": "closed edge"}},
 	"binding":        {Kind: "references-resolve", Go: []string{"*.go"}, Cue: []string{"*.cue"}},
 }
 
@@ -238,12 +239,12 @@ func TestScenarios(t *testing.T) {
 	}
 }
 
-// TestAnnotationsValidate exercises the embedded schema through loadConfig: the
-// fixture annotations are accepted and match fixtureSeams; bad ones are rejected
-// with a precise error. Needs cue on PATH.
+// TestAnnotationsValidate exercises kindFields through loadConfig: the fixture
+// annotations are accepted and match fixtureSeams; bad ones are rejected with an
+// error naming the file, line and problem.
 func TestAnnotationsValidate(t *testing.T) {
-	if _, err := exec.LookPath("cue"); err != nil {
-		t.Skip("cue not on PATH")
+	if !reflect.DeepEqual(sortedKeys(kindFields), sortedKeys(kinds)) {
+		t.Fatalf("kindFields declares %v, kinds implements %v", sortedKeys(kindFields), sortedKeys(kinds))
 	}
 	dir := fixture(t)
 	cfg, err := loadConfig(dir)
@@ -251,44 +252,88 @@ func TestAnnotationsValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range sortedKeys(fixtureSeams) {
-		if _, ok := cfg.Seams[name]; !ok {
-			t.Errorf("fixture .thresh/thresh.cue lacks seam %q declared in fixtureSeams", name)
+		got, ok := cfg.Seams[name]
+		if !ok {
+			t.Errorf("fixture .thresh/thresh.yaml lacks seam %q declared in fixtureSeams", name)
+			continue
+		}
+		got.Purpose = "" // fixtureSeams leaves purposes out
+		if !reflect.DeepEqual(got, fixtureSeams[name]) {
+			t.Errorf("seam %q: fixture .thresh/thresh.yaml has %+v, fixtureSeams has %+v", name, got, fixtureSeams[name])
 		}
 	}
 	for _, name := range sortedKeys(cfg.Seams) {
 		if _, ok := fixtureSeams[name]; !ok {
-			t.Errorf("fixtureSeams lacks seam %q declared in fixture .thresh/thresh.cue", name)
+			t.Errorf("fixtureSeams lacks seam %q declared in fixture .thresh/thresh.yaml", name)
 		}
 	}
 
-	// An unknown kind fails the per-kind disjunction and is named in the error.
-	bad := t.TempDir()
-	write(t, bad, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"frobnicate\", purpose: \"p\", paths: [\"*.go\"]}\n")
-	_, err = loadConfig(bad)
-	if err == nil || !strings.Contains(err.Error(), "invalid .thresh annotations") || !strings.Contains(err.Error(), "frobnicate") {
-		t.Fatalf("expected a validation error naming the bad kind, got: %v", err)
-	}
-
-	// A valid kind with a misspelled field is rejected because every kind's
-	// definition is closed. CUE only reports the field once the kind matches a
-	// branch, which is why this is a separate case from the unknown-kind one.
-	typo := t.TempDir()
-	write(t, typo, ".thresh/thresh.cue", "package thresh\nseams: oops: {kind: \"choke-point\", purpose: \"p\", paths: [\"*.go\"], type: \"x\", onlyIn: [\"f\"], onlyInn: [\"g\"]}\n")
-	_, err = loadConfig(typo)
-	if err == nil || !strings.Contains(err.Error(), "onlyInn") {
-		t.Fatalf("expected a validation error naming the misspelled field, got: %v", err)
-	}
-
-	// Every seam must say why it exists: a missing or empty purpose is rejected.
-	for name, body := range map[string]string{
-		"missing purpose": `{kind: "shared-kernel", paths: ["x.go"]}`,
-		"empty purpose":   `{kind: "shared-kernel", purpose: "", paths: ["x.go"]}`,
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		want  []string // every one must appear in the error
+	}{
+		{"unknown kind", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: frobnicate\n    purpose: p\n"},
+			[]string{"invalid .thresh annotations", ".thresh/thresh.yaml:3", `"frobnicate"`}},
+		{"missing kind", map[string]string{"thresh.yaml": "seams:\n  oops:\n    purpose: p\n"},
+			[]string{"kind is required"}},
+		// Every kind is closed, so a typo is rejected rather than ignored.
+		{"misspelled field", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: choke-point\n    purpose: p\n    paths: [x.go]\n    type: x\n    onlyIn: [f]\n    onlyInn: [g]\n"},
+			[]string{".thresh/thresh.yaml:8", `"onlyInn"`, "choke-point"}},
+		{"another kind's field", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: shared-kernel\n    purpose: p\n    paths: [x.go]\n    onlyIn: [f]\n"},
+			[]string{`"onlyIn"`, "shared-kernel"}},
+		{"missing required field", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: choke-point\n    purpose: p\n    paths: [x.go]\n    onlyIn: [f]\n"},
+			[]string{"type is required for kind choke-point"}},
+		// Every seam must say why it exists.
+		{"missing purpose", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: shared-kernel\n    paths: [x.go]\n"},
+			[]string{"purpose is required"}},
+		{"empty purpose", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: shared-kernel\n    purpose: \"\"\n    paths: [x.go]\n"},
+			[]string{"purpose must say why"}},
+		{"wrong type", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: shared-kernel\n    purpose: p\n    paths: x.go\n"},
+			[]string{".thresh/thresh.yaml:", "[]string"}},
+		{"unknown format", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: published-language\n    purpose: p\n    paths: [x]\n    format: protobuf\n"},
+			[]string{`unknown format "protobuf"`}},
+		{"golden field on thema", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: published-language\n    purpose: p\n    paths: [x]\n    format: thema\n    section: out\n"},
+			[]string{"section applies only to format golden"}},
+		{"both funcs and defs", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: declared-set\n    purpose: p\n    paths: [x]\n    funcs: \"check*\"\n    defs: \"#*\"\n"},
+			[]string{"exactly one of funcs"}},
+		{"neither funcs nor defs", map[string]string{"thresh.yaml": "seams:\n  oops:\n    kind: declared-set\n    purpose: p\n    paths: [x]\n"},
+			[]string{"exactly one of funcs"}},
+		// Files compose by seam name; declaring one twice is never a merge.
+		{"seam declared twice", map[string]string{
+			"a.yaml": "seams:\n  oops:\n    kind: shared-kernel\n    purpose: p\n    paths: [x.go]\n",
+			"b.yml":  "seams:\n  oops:\n    kind: shared-kernel\n    purpose: q\n    paths: [y.go]\n"},
+			[]string{".thresh/b.yml:2", `seam "oops" is already declared at .thresh/a.yaml:2`}},
+		{"unknown top-level key", map[string]string{"thresh.yaml": "seam:\n  oops: {}\n"},
+			[]string{`unknown top-level key "seam"`}},
+		// Every problem is reported, not just the first.
+		{"several problems", map[string]string{"thresh.yaml": "seams:\n  a:\n    kind: frobnicate\n  b:\n    kind: shared-kernel\n    paths: [x]\n"},
+			[]string{`"frobnicate"`, `seam "b": purpose is required`}},
+		// CUE config is no longer read; a leftover is an error, not silence.
+		{"leftover cue config", map[string]string{"thresh.cue": "package thresh\n"},
+			[]string{".thresh/thresh.cue", "YAML now"}},
 	} {
-		bare := t.TempDir()
-		write(t, bare, ".thresh/thresh.cue", "package thresh\nseams: oops: "+body+"\n")
-		if _, err := loadConfig(bare); err == nil || !strings.Contains(err.Error(), "purpose") {
-			t.Errorf("%s: expected a validation error naming purpose, got: %v", name, err)
+		bad := t.TempDir()
+		for f, body := range c.files {
+			write(t, bad, filepath.Join(".thresh", f), body)
 		}
+		_, err := loadConfig(bad)
+		if err == nil {
+			t.Errorf("%s: expected an error", c.name)
+			continue
+		}
+		for _, w := range c.want {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: error lacks %q:\n%v", c.name, w, err)
+			}
+		}
+	}
+
+	// A file with every seam still commented out declares nothing, quietly.
+	empty := t.TempDir()
+	write(t, empty, ".thresh/thresh.yaml", "# nothing yet\nseams:\n  # oops:\n  #   kind: shared-kernel\n")
+	if cfg, err := loadConfig(empty); err != nil || len(cfg.Seams) != 0 {
+		t.Errorf("commented-out config: expected no seams and no error, got %v, %v", cfg, err)
 	}
 
 	// explain renders each seam's purpose ahead of its obligation.
@@ -311,11 +356,36 @@ func TestInitScaffold(t *testing.T) {
 	if err := initRepo(dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".thresh", "thresh.cue")); err != nil {
-		t.Fatal(err)
+	path := filepath.Join(dir, ".thresh", "thresh.yaml")
+	cfg, err := loadConfig(dir)
+	if err != nil || len(cfg.Seams) != 0 {
+		t.Fatalf("fresh scaffold: expected no seams and no error, got %v, %v", cfg, err)
 	}
 	if err := initRepo(dir); err == nil {
 		t.Fatal("expected init to refuse to overwrite an existing .thresh/")
+	}
+
+	// Uncommented as its intro says, every example is a valid seam, and between
+	// them they cover every kind.
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(b), "\n  # ", "\n  ")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	covered := map[string]bool{}
+	for _, s := range cfg.Seams {
+		covered[s.Kind] = true
+	}
+	for _, k := range sortedKeys(kindFields) {
+		if !covered[k] {
+			t.Errorf("init scaffold has no example of kind %s", k)
+		}
 	}
 }
 

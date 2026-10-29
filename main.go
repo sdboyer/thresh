@@ -8,9 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 )
 
 // options is every flag any command takes; each command reads the ones it needs.
@@ -91,7 +88,7 @@ func main() {
 		// touch git, so a globally installed hook is silent and free everywhere else.
 		switch {
 		case cmd == "explain":
-			fmt.Println("No seams declared. Run `thresh init` to scaffold .thresh/thresh.cue.")
+			fmt.Println("No seams declared. Run `thresh init` to scaffold .thresh/thresh.yaml.")
 		case o.deliver:
 		case o.asJSON:
 			fmt.Println("[]")
@@ -215,7 +212,7 @@ func usage() {
   thresh check [A..B] [--repo DIR] [--json]   tap the shoulder about boundaries the changeset crossed
                                                  (no range => uncommitted working tree vs HEAD)
   thresh explain [--repo DIR]                 render the seams as agent guidance (for AGENTS.md)
-  thresh init [--repo DIR]                    scaffold .thresh/thresh.cue with every kind as an example
+  thresh init [--repo DIR]                    scaffold .thresh/thresh.yaml with every kind as an example
 
   check also takes --session ID --transcript PATH (provenance for the tap log) and
   --new (report only taps this session hasn't been told about; needs --session).
@@ -251,48 +248,4 @@ func render(w io.Writer, signals []signal) {
 		}
 		fmt.Fprintf(w, "%s [%s: %s] %s  #%s\n    %s\n", marker, s.Kind, s.Seam, where, s.ID, s.Message)
 	}
-}
-
-// loadConfig exports the repo's .thresh/*.cue in isolation (they are
-// thresh's config, not part of the target's CUE module) unified with the
-// embedded #Seam schema, which validates the data and single-sources the contract.
-func loadConfig(repo string) (config, error) {
-	files, _ := filepath.Glob(filepath.Join(repo, ".thresh", "*.cue"))
-	if len(files) == 0 {
-		return config{}, nil // no annotations: nothing consequential is declared
-	}
-	tmp, err := os.MkdirTemp("", "thresh-cfg-")
-	if err != nil {
-		return config{}, err
-	}
-	defer os.RemoveAll(tmp)
-	if err := os.WriteFile(filepath.Join(tmp, "zz_thresh_schema.cue"), []byte(seamSchema), 0o644); err != nil {
-		return config{}, err
-	}
-	names := []string{"zz_thresh_schema.cue"}
-	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return config{}, err
-		}
-		if err := os.WriteFile(filepath.Join(tmp, filepath.Base(f)), b, 0o644); err != nil {
-			return config{}, err
-		}
-		names = append(names, filepath.Base(f))
-	}
-	cmd := exec.Command("cue", append([]string{"export", "--out", "json"}, names...)...)
-	cmd.Dir = tmp
-	out, err := cmd.Output()
-	if err != nil {
-		stderr := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			stderr = strings.TrimSpace(string(ee.Stderr))
-		}
-		return config{}, fmt.Errorf("invalid .thresh annotations:\n%s", stderr)
-	}
-	var cfg config
-	if err := json.Unmarshal(out, &cfg); err != nil {
-		return config{}, fmt.Errorf("parse annotations: %v", err)
-	}
-	return cfg, nil
 }

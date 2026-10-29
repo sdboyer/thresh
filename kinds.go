@@ -31,24 +31,24 @@ type signal struct {
 	Message string `json:"message"` // the shoulder-tap: a fact about the diff
 }
 
-// seam is the union of every per-kind field. The embedded CUE schema (a per-kind
-// disjunction) enforces which fields apply to which kind, so Go just reads them.
+// seam is the union of every per-kind field. kindFields (config.go) says which
+// fields each kind takes, and loading enforces it, so kinds just read them.
 type seam struct {
-	Kind     string            `json:"kind"`
-	Purpose  string            `json:"purpose"` // every kind: why the seam exists
-	Paths    []string          `json:"paths"`
-	Format   string            `json:"format"`   // published-language: compat extractor
-	Section  string            `json:"section"`  // published-language golden: txtar section holding the output
-	Headline bool              `json:"headline"` // published-language golden: first line of the output is its headline
-	Consult  []string          `json:"consult"`  // shared-kernel: co-owners to consult
-	Watch    []string          `json:"watch"`    // shared-kernel: only changed lines containing these
-	Type     string            `json:"type"`     // choke-point: the guarded type
-	OnlyIn   []string          `json:"onlyIn"`   // choke-point: functions allowed to construct it
-	Funcs    string            `json:"funcs"`    // declared-set: glob on Go function name
-	Defs     string            `json:"defs"`     // declared-set: glob on CUE definition name
-	Declared map[string]string `json:"declared"` // declared-set: name -> reason it is Go-side
-	Go       []string          `json:"go"`       // references-resolve: Go files
-	Cue      []string          `json:"cue"`      // references-resolve: CUE files
+	Kind     string            `json:"kind" yaml:"kind"`
+	Purpose  string            `json:"purpose" yaml:"purpose"` // every kind: why the seam exists
+	Paths    []string          `json:"paths" yaml:"paths"`
+	Format   string            `json:"format" yaml:"format"`     // published-language: compat extractor
+	Section  string            `json:"section" yaml:"section"`   // published-language golden: txtar section holding the output
+	Headline bool              `json:"headline" yaml:"headline"` // published-language golden: first line of the output is its headline
+	Consult  []string          `json:"consult" yaml:"consult"`   // shared-kernel: co-owners to consult
+	Watch    []string          `json:"watch" yaml:"watch"`       // shared-kernel: only changed lines containing these
+	Type     string            `json:"type" yaml:"type"`         // choke-point: the guarded type
+	OnlyIn   []string          `json:"onlyIn" yaml:"onlyIn"`     // choke-point: functions allowed to construct it
+	Funcs    string            `json:"funcs" yaml:"funcs"`       // declared-set: glob on Go function name
+	Defs     string            `json:"defs" yaml:"defs"`         // declared-set: glob on CUE definition name
+	Declared map[string]string `json:"declared" yaml:"declared"` // declared-set: name -> reason it is Go-side
+	Go       []string          `json:"go" yaml:"go"`             // references-resolve: Go files
+	Cue      []string          `json:"cue" yaml:"cue"`           // references-resolve: CUE files
 }
 
 type config struct {
