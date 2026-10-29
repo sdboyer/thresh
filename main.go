@@ -101,7 +101,7 @@ func main() {
 		return
 	}
 	if cmd == "explain" {
-		explain(cfg)
+		explain(os.Stdout, cfg)
 		return
 	}
 	if err := runCheck(o, cfg, os.Stdout, os.Stderr); err != nil {

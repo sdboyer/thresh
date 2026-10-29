@@ -10,14 +10,20 @@ package thresh
 
 seams: [string]: #Seam
 
+// Why the seam exists: what crossing it puts at stake, in the author's words.
+// Required, so the reason lives with the seam rather than in prose that drifts
+// from it; thresh explain renders it under the seam.
+#Purpose: string & !=""
+
 #Seam: #PublishedLanguage | #SharedKernel | #ChokePoint | #DeclaredSet | #ReferencesResolve
 
 // A contract for consumers you cannot enumerate. You owe them compatibility, so
 // the tap is a compatibility verdict read from the format. Other formats
 // (protobuf, openapi, ...) are to add.
 #PublishedLanguage: {
-	kind:  "published-language"
-	paths: [...string]
+	kind:    "published-language"
+	purpose: #Purpose
+	paths:   [...string]
 	{
 		format: "thema" // the version tuples thema makes authors declare
 	} | {
@@ -30,6 +36,7 @@ seams: [string]: #Seam
 // Code co-owned by contexts you can name. You owe them consultation.
 #SharedKernel: {
 	kind:     "shared-kernel"
+	purpose:  #Purpose
 	paths:    [...string]
 	consult?: [...string] // who stands on this; repeated in the tap
 	watch?:   [...string] // if set, only changed lines containing one of these count
@@ -37,10 +44,11 @@ seams: [string]: #Seam
 
 // All construction of `type` goes through `onlyIn`.
 #ChokePoint: {
-	kind:   "choke-point"
-	paths:  [...string]
-	type:   string
-	onlyIn: [...string]
+	kind:    "choke-point"
+	purpose: #Purpose
+	paths:   [...string]
+	type:    string
+	onlyIn:  [...string]
 }
 
 // An intentional, enumerated set of code elements. Undeclared additions and
@@ -49,6 +57,7 @@ seams: [string]: #Seam
 // or defs.
 #DeclaredSet: {
 	kind:     "declared-set"
+	purpose:  #Purpose
 	paths:    [...string]
 	declared: [string]: string // name -> why it belongs in the set
 	{
@@ -60,7 +69,8 @@ seams: [string]: #Seam
 
 // Go reaches into CUE by literal path; fire when a reference no longer resolves.
 #ReferencesResolve: {
-	kind: "references-resolve"
-	go:   [...string]
-	cue:  [...string]
+	kind:    "references-resolve"
+	purpose: #Purpose
+	go:      [...string]
+	cue:     [...string]
 }
