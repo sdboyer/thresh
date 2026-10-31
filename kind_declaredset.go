@@ -13,12 +13,17 @@ import (
 type declaredSet struct{}
 
 func (declaredSet) assess(name string, s seam, cs *changeset) []signal {
-	glob, elems := s.Funcs, goFuncElements
-	if s.Defs != "" {
-		glob, elems = s.Defs, cueDefElements
-	}
 	var out []signal
 	for _, f := range cs.under(s.Paths) {
+		glob, elems := s.Funcs, goFuncElements
+		switch {
+		case s.Defs != "":
+			glob, elems = s.Defs, cueDefElements
+		case s.Entries != "":
+			glob, elems = "*", pyRegistryElements(s.Entries)
+		case isPython(f.Path):
+			elems = pyFuncElements
+		}
 		before := map[string]bool{}
 		for _, e := range elems(f.Before) {
 			if ok, _ := filepath.Match(glob, e.name); ok {

@@ -20,6 +20,9 @@ var fixtureSeams = map[string]seam{
 	"checks":         {Kind: "declared-set", Paths: []string{"bind.go"}, Funcs: "check*", Declared: map[string]string{"checkOne": "first", "checkTwo": "second"}},
 	"shapes":         {Kind: "declared-set", Paths: []string{"shapes.cue"}, Defs: "*#*", Declared: map[string]string{"#Shape": "shape", "#Edge": "edge"}},
 	"binding":        {Kind: "references-resolve", Go: []string{"*.go"}, Cue: []string{"*.cue"}},
+	"profiler":       {Kind: "choke-point", Paths: []string{"pkg/*.py"}, Type: "jax.profiler", OnlyIn: []string{"Profiler.*"}},
+	"cells":          {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Entries: "CELLS", Declared: map[string]string{"decode": "decode", "prefill": "prefill"}},
+	"cell-funcs":     {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Funcs: "cell_*", Declared: map[string]string{"cell_decode": "decode", "cell_prefill": "prefill"}},
 }
 
 // Every kind has at least one loud scenario and one silence scenario. The
@@ -208,6 +211,73 @@ func TestScenarios(t *testing.T) {
 				replace(t, dir, "bind.go", "func (m *maybe) checkTwo() error { return nil }\n", "")
 			},
 			[]string{"[declared-set: checks]", "checkTwo no longer exists", "note"},
+		},
+		{
+			"a guarded Python name used outside the choke point is loud",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ndef sneak(where):\n    jax.profiler.start_trace(where)\n")
+			},
+			[]string{"[choke-point: profiler] pkg/profile.py", "uses guarded name jax.profiler.start_trace in sneak() (line 18)"},
+		},
+		{
+			"a guarded Python name reached through a from-import alias is loud",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\nfrom jax import profiler as p\n\n\ndef sneak():\n    p.stop_trace()\n")
+			},
+			[]string{"uses guarded name jax.profiler in module level (line 17)", "uses guarded name jax.profiler.stop_trace in sneak() (line 21)"},
+		},
+		{
+			"a guarded Python name used inside the choke point is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/profile.py", "        jax.profiler.stop_trace()",
+					"        jax.profiler.stop_trace()\n        jax.profiler.start_trace(\"again\")")
+			},
+			nil,
+		},
+		{
+			"comment- and docstring-only Python edits are silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/profile.py", "def step(state):\n", "def step(state):  # still pure\n    \"\"\"One step.\"\"\"\n")
+				replace(t, dir, "pkg/profile.py", "\"\"\"A choke point in Python", "\"\"\"A choke point, in Python")
+			},
+			nil,
+		},
+		{
+			"an indentation-only Python edit that moves a guarded use out of the choke point is loud",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/profile.py", "    def stop(self):\n        jax.profiler.stop_trace()\n",
+					"    def stop(self):\n        pass\n\n\njax.profiler.stop_trace()\n")
+			},
+			[]string{"uses guarded name jax.profiler.stop_trace in module level"},
+		},
+		{
+			"an undeclared registry entry added is loud",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/cells.py", "    \"prefill\": \"the prefill cell\",\n", "    \"prefill\": \"the prefill cell\",\n    \"verify\": \"a new cell\",\n")
+			},
+			[]string{"[declared-set: cells] pkg/cells.py", "undeclared element added: verify (line 6)"},
+		},
+		{
+			"an undeclared registry entry added by subscript is loud",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/cells.py", "\nCELLS[\"draft\"] = \"a drafted cell\"\n")
+			},
+			[]string{"undeclared element added: draft"},
+		},
+		{
+			"a declared registry entry removed is a note, and its value's edit is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/cells.py", "    \"decode\": \"the decode cell\",\n", "")
+				replace(t, dir, "pkg/cells.py", "\"the prefill cell\"", "\"the prefill cell, renamed\"")
+			},
+			[]string{"[declared-set: cells]", "declared element decode no longer exists", "note"},
+		},
+		{
+			"an undeclared Python function in a declared set is loud",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/cells.py", "\n\ndef cell_verify():\n    return 3\n")
+			},
+			[]string{"[declared-set: cell-funcs]", "undeclared element added: cell_verify"},
 		},
 		{
 			"renamed CUE label breaks Go references, including an untouched file",

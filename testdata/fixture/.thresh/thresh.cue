@@ -75,3 +75,33 @@ seams: verdicts: {
 	section:  "out"
 	headline: true
 }
+
+seams: profiler: {
+	kind:    "choke-point"
+	purpose: "Profiler owns the trace's lifetime"
+	paths:   ["pkg/*.py"]
+	type:    "jax.profiler"
+	onlyIn:  ["Profiler.*"]
+}
+
+seams: cells: {
+	kind:    "declared-set"
+	purpose: "each cell is a deliberate entry"
+	paths:   ["pkg/cells.py"]
+	entries: "CELLS"
+	declared: {
+		decode:  "the decode cell"
+		prefill: "the prefill cell"
+	}
+}
+
+seams: "cell-funcs": {
+	kind:    "declared-set"
+	purpose: "each cell function backs one entry"
+	paths:   ["pkg/cells.py"]
+	funcs:   "cell_*"
+	declared: {
+		cell_decode:  "decode"
+		cell_prefill: "prefill"
+	}
+}

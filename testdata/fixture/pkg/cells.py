@@ -1,0 +1,14 @@
+"""A Python registry and a declared set of functions."""
+
+CELLS = {
+    "decode": "the decode cell",
+    "prefill": "the prefill cell",
+}
+
+
+def cell_decode():
+    return 1
+
+
+def cell_prefill():
+    return 2
