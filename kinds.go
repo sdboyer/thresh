@@ -56,6 +56,16 @@ type config struct {
 	Seams map[string]seam `json:"seams"`
 }
 
+// guardedSite is a choke point's site, as each language's extractor reads it:
+// what is done there ("constructs guarded type", "uses guarded name"), to which
+// name, in which function ("" at module or package level), on which line.
+type guardedSite struct {
+	What string
+	Name string
+	Func string
+	Line int
+}
+
 type kind interface {
 	assess(name string, s seam, cs *changeset) []signal
 }

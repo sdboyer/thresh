@@ -5,8 +5,11 @@ need not import or run.
     {"ok": bool,
      "funcs": [{"name": "Class.method", "line": n}, ...],          every function and method, qualified
      "uses": [{"name": "a.b.c", "line": n, "func": "Class.method"}, ...],
-         every dotted name referenced, through the file's imports, with the function it sits in ("" for
-         module level); an import statement is a use of each name it binds
+         every dotted name referenced whose root is imported (resolved through the import, in the scope the
+         name is read in: a parameter or local of the same name shadows it) or bound nowhere in the file, with
+         the function it runs in ("" for module level and a module-level class body: a class body runs where
+         the class is defined; a default, a decorator or an annotation runs where its function is defined);
+         an absolute import statement is a use of each name it imports
      "registries": {"NAME": [{"key": "k", "line": n}, ...], ...},
          each module-level dict, set, list or tuple literal (or dict(...) call) bound to a name, and each
          module-level `NAME[k] = ...`: its keys or elements, constants, dotted names and tuples of them
@@ -20,33 +23,106 @@ import json
 import sys
 
 
-def dotted(node, aliases):
-    """The dotted name an expression of names and attributes spells, its root through `aliases`; None for
-    anything else (a call's result, a subscript)."""
+def chain(node):
+    """The root name and the attributes an expression of names and attributes spells; None for anything else
+    (a call's result, a subscript)."""
     parts = []
     while isinstance(node, ast.Attribute):
         parts.append(node.attr)
         node = node.value
     if not isinstance(node, ast.Name):
         return None
-    parts.append(aliases.get(node.id, node.id))
-    return ".".join(reversed(parts))
+    return node.id, list(reversed(parts))
+
+
+def dotted(node):
+    """The dotted name an expression of names and attributes spells, as written; None for anything else."""
+    spelled = chain(node)
+    return None if spelled is None else ".".join([spelled[0], *spelled[1]])
+
+
+UNKNOWN = object()
+"""A name bound to something that is not an absolute import: a parameter, a local, a relative import."""
 
 
 def bound(node):
-    """Each (local name, dotted name) an import statement binds, and each dotted name it imports."""
+    """Each (local name, what it is bound to) an import statement binds: an absolute import's dotted name, or
+    UNKNOWN for a relative one."""
     if isinstance(node, ast.Import):
         for alias in node.names:
             if alias.asname:
-                yield alias.asname, alias.name, alias.name
+                yield alias.asname, alias.name
             else:
-                root = alias.name.split(".")[0]
-                yield root, root, alias.name
-    elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                yield alias.name.split(".")[0], alias.name.split(".")[0]
+    elif isinstance(node, ast.ImportFrom):
         for alias in node.names:
             if alias.name != "*":
-                name = f"{node.module}.{alias.name}"
-                yield alias.asname or alias.name, name, name
+                absolute = node.module and not node.level
+                yield alias.asname or alias.name, f"{node.module}.{alias.name}" if absolute else UNKNOWN
+
+
+def imported(node):
+    """Each dotted name an absolute import statement imports (a star import, its module)."""
+    if isinstance(node, ast.Import):
+        yield from (alias.name for alias in node.names)
+    elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+        for alias in node.names:
+            yield node.module if alias.name == "*" else f"{node.module}.{alias.name}"
+
+
+MATCHED = tuple(getattr(ast, name) for name in ("MatchAs", "MatchStar", "MatchMapping") if hasattr(ast, name))
+"""The patterns that bind a name (Python 3.10 on)."""
+SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, ast.ListComp, ast.SetComp,
+          ast.DictComp, ast.GeneratorExp)
+
+
+def arguments(args):
+    return [arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs) if arg] + \
+        [arg.arg for arg in (args.vararg, args.kwarg) if arg]
+
+
+def bindings(body, names=()):
+    """What each name a scope binds is bound to (its statements `body`, its parameters `names`): an import's
+    dotted name where every binding of it is the same absolute import, else UNKNOWN. Nested scopes are not
+    read, but the names of the functions and classes they define are bound; `global` and `nonlocal` names
+    are left to the scopes that bind them."""
+    found, outer = {name: {UNKNOWN} for name in names}, set()
+    pending = list(body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for local, value in bound(node):
+                found.setdefault(local, set()).add(value)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            outer.update(node.names)
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            found.setdefault(node.id, set()).add(UNKNOWN)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.setdefault(node.name, set()).add(UNKNOWN)
+        elif isinstance(node, MATCHED) and getattr(node, "name", None) or getattr(node, "rest", None):
+            found.setdefault(getattr(node, "name", None) or node.rest, set()).add(UNKNOWN)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            found.setdefault(node.name, set()).add(UNKNOWN)
+        if not isinstance(node, SCOPES):
+            pending.extend(ast.iter_child_nodes(node))
+    return {name: values.pop() if len(values) == 1 else UNKNOWN
+            for name, values in found.items() if name not in outer}
+
+
+def module_bindings(body):
+    """A module's (or a class body's) bindings: as `bindings`, but an import wins over other bindings of its
+    name (`try: import a` / `except ImportError: a = None`), its statements running in order."""
+    found = {}
+    pending = list(body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for local, value in bound(node):
+                found.setdefault(local, set()).add(value)
+        if not isinstance(node, SCOPES):
+            pending.extend(ast.iter_child_nodes(node))
+    imports = {name: values.pop() if len(values) == 1 else UNKNOWN for name, values in found.items()}
+    return {**{name: UNKNOWN for name in bindings(body)}, **imports}
 
 
 def key_of(node):
@@ -57,21 +133,21 @@ def key_of(node):
     if isinstance(node, ast.Tuple):
         parts = [key_of(element) for element in node.elts]
         return None if None in parts else "(" + ", ".join(parts) + ")"
-    return dotted(node, {})
+    return dotted(node)
 
 
 def entries(value):
     """The keys or elements of a registry literal: a dict, set, list or tuple display, or dict(...) by
     keywords, through frozenset(...), set(...), tuple(...) or MappingProxyType(...) around one."""
     while (isinstance(value, ast.Call) and isinstance(value.func, (ast.Name, ast.Attribute))
-           and dotted(value.func, {}) in ("frozenset", "set", "tuple", "list", "MappingProxyType",
+           and dotted(value.func) in ("frozenset", "set", "tuple", "list", "MappingProxyType",
                                           "types.MappingProxyType") and len(value.args) == 1):
         value = value.args[0]
     if isinstance(value, ast.Dict):
         return [(key, key.lineno) for key in value.keys if key is not None]
     if isinstance(value, (ast.Set, ast.List, ast.Tuple)):
         return [(element, element.lineno) for element in value.elts]
-    if isinstance(value, ast.Call) and dotted(value.func, {}) == "dict" and not value.args:
+    if isinstance(value, ast.Call) and dotted(value.func) == "dict" and not value.args:
         return [(ast.Constant(keyword.arg), keyword.value.lineno) for keyword in value.keywords if keyword.arg]
     return None
 
@@ -88,58 +164,112 @@ def undocumented(tree):
 
 
 class Facts(ast.NodeVisitor):
+    """The facts of one module. `frames` are the scopes a name is read in, innermost last, each with its kind
+    ("module", "class", "function") and bindings; `qualified` names the definitions the visit is inside, for
+    a function's name; `running` is the qualified name of each function the visit is inside, for a use's."""
+
     def __init__(self):
         self.funcs, self.uses, self.registries = [], [], {}
-        self.aliases, self.scope = {}, []
+        self.frames, self.qualified, self.running = [], [], []
 
-    def within(self, node, name):
-        self.scope.append(name)
-        self.generic_visit(node)
-        self.scope.pop()
+    def resolve(self, name):
+        """The dotted name `name` is bound to where it is read; None where it is bound to something else. A
+        class body's names are seen only from that body, not from the functions defined in it."""
+        for at, (kind, names) in enumerate(reversed(self.frames)):
+            if kind == "class" and at > 0:
+                continue
+            if name in names:
+                return None if names[name] is UNKNOWN else names[name]
+        return name
 
-    def visit_ClassDef(self, node):
+    def within(self, kind, names, body):
+        self.frames.append((kind, names))
+        for node in body:
+            self.visit(node)
+        self.frames.pop()
+
+    def visit_Module(self, node):
+        self.within("module", module_bindings(node.body), node.body)
+
+    def definition(self, node):
+        """What a function's or a class's definition evaluates where it is defined: its decorators, and a
+        function's defaults and annotations, a class's bases and keywords."""
         for decorator in node.decorator_list:
             self.visit(decorator)
-        for base in node.bases:
-            self.visit(base)
-        self.scope.append(node.name)
-        for statement in node.body:
-            self.visit(statement)
-        self.scope.pop()
-
-    def visit_FunctionDef(self, node):
-        self.funcs.append({"name": ".".join([*self.scope, node.name]), "line": node.lineno})
-        for decorator in node.decorator_list:
-            self.visit(decorator)
-        self.scope.append(node.name)
-        self.visit(node.args)
+        if isinstance(node, ast.ClassDef):
+            for expression in (*node.bases, *(keyword.value for keyword in node.keywords)):
+                self.visit(expression)
+            return
+        args = node.args
+        for expression in (*args.defaults, *(default for default in args.kw_defaults if default)):
+            self.visit(expression)
+        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg):
+            if arg is not None and arg.annotation is not None:
+                self.visit(arg.annotation)
         if node.returns:
             self.visit(node.returns)
-        for statement in node.body:
-            self.visit(statement)
-        self.scope.pop()
+
+    def visit_ClassDef(self, node):
+        self.definition(node)
+        self.qualified.append(node.name)
+        self.within("class", module_bindings(node.body), node.body)
+        self.qualified.pop()
+
+    def visit_FunctionDef(self, node):
+        name = ".".join([*self.qualified, node.name])
+        self.funcs.append({"name": name, "line": node.lineno})
+        self.definition(node)
+        self.qualified.append(node.name)
+        self.running.append(name)
+        self.within("function", bindings(node.body, arguments(node.args)), node.body)
+        self.running.pop()
+        self.qualified.pop()
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
+    def visit_Lambda(self, node):
+        for expression in (*node.args.defaults, *(default for default in node.args.kw_defaults if default)):
+            self.visit(expression)
+        self.within("function", {name: UNKNOWN for name in arguments(node.args)}, [node.body])
+
+    def comprehension(self, node, parts):
+        """A comprehension's scope: its first iterable is read outside it, the rest inside, where its targets
+        are bound."""
+        first, *rest = node.generators
+        self.visit(first.iter)
+        targets = {target.id: UNKNOWN for generator in node.generators
+                   for target in ast.walk(generator.target) if isinstance(target, ast.Name)}
+        inside = [first.target, *first.ifs, *(part for generator in rest
+                                              for part in (generator.target, generator.iter, *generator.ifs))]
+        self.within("function", targets, [*inside, *parts])
+
+    def visit_ListComp(self, node):
+        self.comprehension(node, [node.elt])
+
+    visit_SetComp = visit_GeneratorExp = visit_ListComp
+
+    def visit_DictComp(self, node):
+        self.comprehension(node, [node.key, node.value])
+
     def use(self, name, line):
-        self.uses.append({"name": name, "line": line, "func": ".".join(self.scope)})
+        self.uses.append({"name": name, "line": line, "func": self.running[-1] if self.running else ""})
 
     def visit_Import(self, node):
-        for local, name, imported in bound(node):
-            self.aliases[local] = name
-            self.use(imported, node.lineno)
+        for name in imported(node):
+            self.use(name, node.lineno)
 
     visit_ImportFrom = visit_Import
 
     def visit_Attribute(self, node):
-        name = dotted(node, self.aliases)
-        if name is None:
+        spelled = chain(node)
+        if spelled is None:
             self.generic_visit(node)
-        else:
-            self.use(name, node.lineno)
+        elif (root := self.resolve(spelled[0])) is not None:
+            self.use(".".join([root, *spelled[1]]), node.lineno)
 
     def visit_Name(self, node):
-        self.use(self.aliases.get(node.id, node.id), node.lineno)
+        if isinstance(node.ctx, ast.Load) and (root := self.resolve(node.id)) is not None:
+            self.use(root, node.lineno)
 
     def registry(self, name, found):
         if found is not None:
@@ -149,7 +279,7 @@ class Facts(ast.NodeVisitor):
                     listed.append({"key": text, "line": line})
 
     def visit_Assign(self, node):
-        if not self.scope:
+        if len(self.frames) == 1:
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     self.registry(target.id, entries(node.value))
@@ -158,7 +288,7 @@ class Facts(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node):
-        if not self.scope and isinstance(node.target, ast.Name) and node.value is not None:
+        if len(self.frames) == 1 and isinstance(node.target, ast.Name) and node.value is not None:
             self.registry(node.target.id, entries(node.value))
         self.generic_visit(node)
 

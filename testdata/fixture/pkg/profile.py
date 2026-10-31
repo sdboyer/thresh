@@ -7,6 +7,7 @@ class Profiler:
         jax.profiler.start_trace(where)
 
     def stop(self):
+        self.stopped = True
         jax.profiler.stop_trace()
 
 

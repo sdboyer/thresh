@@ -20,28 +20,21 @@ func (chokePoint) assess(name string, s seam, cs *changeset) []signal {
 		if !touched(f) {
 			continue
 		}
+		sites := goGuardedSites
 		if isPython(f.Path) {
-			for _, use := range pyUses(f.After, s.Type) {
-				if !f.Changed[use.Line] || matchAny(s.OnlyIn, use.Func) {
-					continue
-				}
-				where := use.Func + "()"
-				if use.Func == "" {
-					where = "module level"
-				}
-				out = append(out, signal{Kind: s.Kind, Seam: name, File: f.Path, Level: "step-back",
-					Message: fmt.Sprintf("uses guarded name %s in %s (line %d) — outside the choke point (%s). Whatever it enforces is skipped on this path.",
-						use.Name, where, use.Line, strings.Join(s.OnlyIn, ", "))})
-			}
-			continue
+			sites = pyGuardedSites
 		}
-		for _, site := range goConstructions(f.After, s.Type) {
-			if !f.Changed[site.Line] || matchAny(s.OnlyIn, site.EnclosingFunc) {
+		for _, site := range sites(f.After, s.Type) {
+			if !f.Changed[site.Line] || matchAny(s.OnlyIn, site.Func) {
 				continue
 			}
+			where := site.Func + "()"
+			if site.Func == "" {
+				where = "module level"
+			}
 			out = append(out, signal{Kind: s.Kind, Seam: name, File: f.Path, Level: "step-back",
-				Message: fmt.Sprintf("constructs guarded type %s in %s() (line %d) — outside the choke point (%s). Whatever it enforces is skipped on this path.",
-					site.Type, site.EnclosingFunc, site.Line, strings.Join(s.OnlyIn, ", "))})
+				Message: fmt.Sprintf("%s %s in %s (line %d) — outside the choke point (%s). Whatever it enforces is skipped on this path.",
+					site.What, site.Name, where, site.Line, strings.Join(s.OnlyIn, ", "))})
 		}
 	}
 	return out

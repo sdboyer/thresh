@@ -102,27 +102,42 @@ func pyUses(src, name string) []pyUse {
 	return out
 }
 
-// pyFuncElements lists a Python source's functions and methods, by qualified name.
-func pyFuncElements(src string) []element {
-	var out []element
-	if f := pyFacts(src); f != nil {
-		for _, fn := range f.Funcs {
-			out = append(out, element{fn.Name, fn.Line})
-		}
+// pyGuardedSites is pyUses as choke-point sites.
+func pyGuardedSites(src, name string) []guardedSite {
+	var out []guardedSite
+	for _, use := range pyUses(src, name) {
+		out = append(out, guardedSite{"uses guarded name", use.Name, use.Func, use.Line})
 	}
 	return out
 }
 
-// pyRegistryElements lists the keys or elements of a module-level registry named `name`.
-func pyRegistryElements(name string) func(string) []element {
-	return func(src string) []element {
-		var out []element
-		if f := pyFacts(src); f != nil {
-			for _, e := range f.Registries[name] {
-				out = append(out, element{e.Key, e.Line})
-			}
+// pyFuncElements lists a Python source's functions and methods, by qualified name; false where it cannot be
+// read (python3 cannot be run, or the source does not parse).
+func pyFuncElements(src string) ([]element, bool) {
+	f := pyFacts(src)
+	if f == nil || !f.OK {
+		return nil, false
+	}
+	var out []element
+	for _, fn := range f.Funcs {
+		out = append(out, element{fn.Name, fn.Line})
+	}
+	return out, true
+}
+
+// pyRegistryElements lists the keys or elements of a module-level registry named `name`; false where the
+// source cannot be read.
+func pyRegistryElements(name string) func(string) ([]element, bool) {
+	return func(src string) ([]element, bool) {
+		f := pyFacts(src)
+		if f == nil || !f.OK {
+			return nil, false
 		}
-		return out
+		var out []element
+		for _, e := range f.Registries[name] {
+			out = append(out, element{e.Key, e.Line})
+		}
+		return out, true
 	}
 }
 

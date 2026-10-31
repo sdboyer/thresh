@@ -219,14 +219,14 @@ func TestScenarios(t *testing.T) {
 			func(t *testing.T, dir string) {
 				appendTo(t, dir, "pkg/profile.py", "\n\ndef sneak(where):\n    jax.profiler.start_trace(where)\n")
 			},
-			[]string{"[choke-point: profiler] pkg/profile.py", "uses guarded name jax.profiler.start_trace in sneak() (line 18)"},
+			[]string{"[choke-point: profiler] pkg/profile.py", "uses guarded name jax.profiler.start_trace in sneak() (line 19)"},
 		},
 		{
 			"a guarded Python name reached through a from-import alias is loud",
 			func(t *testing.T, dir string) {
 				appendTo(t, dir, "pkg/profile.py", "\n\nfrom jax import profiler as p\n\n\ndef sneak():\n    p.stop_trace()\n")
 			},
-			[]string{"uses guarded name jax.profiler in module level (line 17)", "uses guarded name jax.profiler.stop_trace in sneak() (line 21)"},
+			[]string{"uses guarded name jax.profiler in module level (line 18)", "uses guarded name jax.profiler.stop_trace in sneak() (line 22)"},
 		},
 		{
 			"a guarded Python name given as a glob matches each use under it",
@@ -254,8 +254,8 @@ func TestScenarios(t *testing.T) {
 		{
 			"an indentation-only Python edit that moves a guarded use out of the choke point is loud",
 			func(t *testing.T, dir string) {
-				replace(t, dir, "pkg/profile.py", "    def stop(self):\n        jax.profiler.stop_trace()\n",
-					"    def stop(self):\n        pass\n\n\njax.profiler.stop_trace()\n")
+				replace(t, dir, "pkg/profile.py", "        self.stopped = True\n        jax.profiler.stop_trace()\n",
+					"        self.stopped = True\njax.profiler.stop_trace()\n")
 			},
 			[]string{"uses guarded name jax.profiler.stop_trace in module level"},
 		},
@@ -274,12 +274,50 @@ func TestScenarios(t *testing.T) {
 			[]string{"undeclared element added: draft"},
 		},
 		{
-			"a declared registry entry removed is a note, and its value's edit is silent",
+			"a declared registry entry removed is a note",
 			func(t *testing.T, dir string) {
 				replace(t, dir, "pkg/cells.py", "    \"decode\": \"the decode cell\",\n", "")
-				replace(t, dir, "pkg/cells.py", "\"the prefill cell\"", "\"the prefill cell, renamed\"")
 			},
 			[]string{"[declared-set: cells]", "declared element decode no longer exists", "note"},
+		},
+		{
+			"a registry value's edit is silent",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/cells.py", "\"the prefill cell\"", "\"the prefill cell, renamed\"")
+			},
+			nil,
+		},
+		{
+			"an undeclared registry key that reads as a path is loud",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/cells.py", "\nCELLS[\"/admin\"] = \"an admin cell\"\n")
+			},
+			[]string{"[declared-set: cells]", "undeclared element added: /admin"},
+		},
+		{
+			"a Python file that stops parsing claims no set change",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/cells.py", "\n\ndef broken(:\n    pass\n")
+			},
+			nil,
+		},
+		{
+			"a parameter named as a guarded import is not the import",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ndef unrelated(jax):\n    return jax.profiler\n\n\ndef listed():\n    return [jax.profiler for jax in range(3)]\n")
+			},
+			nil,
+		},
+		{
+			"a default, a class keyword and a class body run where they are defined, outside the choke point",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/profile.py", "class Profiler:\n",
+					"class Profiler(object, options=jax.profiler.ProfileOptions()):\n    capture = jax.profiler.trace\n\n"+
+						"    def again(self, where=jax.profiler.TraceAnnotation(\"x\")):\n        return where\n\n")
+			},
+			[]string{"uses guarded name jax.profiler.ProfileOptions in module level (line 5)",
+				"uses guarded name jax.profiler.trace in module level (line 6)",
+				"uses guarded name jax.profiler.TraceAnnotation in module level (line 8)"},
 		},
 		{
 			"an undeclared tuple-keyed registry entry is loud, named by its elements",
