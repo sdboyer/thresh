@@ -309,6 +309,20 @@ func TestScenarios(t *testing.T) {
 			nil,
 		},
 		{
+			"a module that rebinds an imported name no longer reads it as the import",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\njax = None\n\n\ndef later():\n    return jax.profiler\n")
+			},
+			nil,
+		},
+		{
+			"a global declaration reads the module's import past an enclosing parameter",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ndef outer(jax):\n    def inner():\n        global jax\n        jax.profiler.stop_trace()\n    return inner\n")
+			},
+			[]string{"uses guarded name jax.profiler.stop_trace in outer.inner() (line 21)"},
+		},
+		{
 			"an annotation naming a guarded name is its function's",
 			func(t *testing.T, dir string) {
 				replace(t, dir, "pkg/profile.py", "    def stop(self):\n", "    def stop(self, options: jax.profiler.ProfileOptions = None) -> jax.profiler.TraceAnnotation:\n")

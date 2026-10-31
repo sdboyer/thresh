@@ -82,19 +82,35 @@ def arguments(args):
         [arg.arg for arg in (args.vararg, args.kwarg) if arg]
 
 
-def bindings(body, names=()):
-    """What each name a scope binds is bound to (its statements `body`, its parameters `names`): an import's
-    dotted name where every binding of it is the same absolute import, else UNKNOWN. Nested scopes are not
-    read, but the names of the functions and classes they define are bound; `global` and `nonlocal` names
-    are left to the scopes that bind them."""
-    found, outer = {name: {UNKNOWN} for name in names}, set()
+GLOBAL = object()
+"""A name a function declares `global`: read from the module, whatever the scopes between bind."""
+
+
+def walked(body, handlers=True):
+    """The nodes of a scope's statements `body`, nested scopes' insides aside (their nodes themselves kept), and
+    the insides of `except` handlers too where `handlers` is false."""
     pending = list(body)
     while pending:
         node = pending.pop()
+        yield node
+        if not isinstance(node, SCOPES) and (handlers or not isinstance(node, ast.ExceptHandler)):
+            pending.extend(ast.iter_child_nodes(node))
+
+
+def bindings(body, names=(), handlers=True):
+    """What each name a scope binds is bound to (its statements `body`, its parameters `names`): an import's
+    dotted name where every binding of it is the same absolute import, else UNKNOWN; GLOBAL for a name it
+    declares `global`. The names of the functions and classes it defines are bound; a name it declares
+    `nonlocal` is left to the scope that binds it. The bindings inside `except` handlers are read where
+    `handlers`."""
+    found, declared, outer = {name: {UNKNOWN} for name in names}, set(), set()
+    for node in walked(body, handlers):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             for local, value in bound(node):
                 found.setdefault(local, set()).add(value)
-        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+        elif isinstance(node, ast.Global):
+            declared.update(node.names)
+        elif isinstance(node, ast.Nonlocal):
             outer.update(node.names)
         elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
             found.setdefault(node.id, set()).add(UNKNOWN)
@@ -104,26 +120,25 @@ def bindings(body, names=()):
             found.setdefault(getattr(node, "name", None) or node.rest, set()).add(UNKNOWN)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             found.setdefault(node.name, set()).add(UNKNOWN)
-        if not isinstance(node, SCOPES):
-            pending.extend(ast.iter_child_nodes(node))
-    return {name: values.pop() if len(values) == 1 else UNKNOWN
-            for name, values in found.items() if name not in outer}
+    named = {name: values.pop() if len(values) == 1 else UNKNOWN
+             for name, values in found.items() if name not in outer | declared}
+    return {**named, **{name: GLOBAL for name in declared}}
 
 
 def module_bindings(body):
-    """A module's (or a class body's) bindings: as `bindings`, but an import wins over other bindings of its
-    name (`try: import a` / `except ImportError: a = None`), its statements running in order."""
-    found = {}
-    pending = list(body)
-    while pending:
-        node = pending.pop()
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for local, value in bound(node):
-                found.setdefault(local, set()).add(value)
-        if not isinstance(node, SCOPES):
-            pending.extend(ast.iter_child_nodes(node))
-    imports = {name: values.pop() if len(values) == 1 else UNKNOWN for name, values in found.items()}
-    return {**{name: UNKNOWN for name in bindings(body)}, **imports}
+    """A module's (or a class body's) bindings: as `bindings`, but a name bound outside its `except` handlers
+    by one absolute import alone, and inside them by no other import, is that import: the optional import's
+    fallback (`try: import a` / `except ImportError: a = None`) does not unbind it."""
+    everywhere, outside = bindings(body), bindings(body, handlers=False)
+    fallbacks = {}
+    for handler in (node for node in walked(body, handlers=False) if isinstance(node, ast.ExceptHandler)):
+        for node in walked(handler.body):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for local, value in bound(node):
+                    fallbacks.setdefault(local, set()).add(value)
+    imported = {name: value for name, value in outside.items() if value is not UNKNOWN and value is not GLOBAL
+                and fallbacks.get(name, {value}) == {value}}
+    return {**{name: UNKNOWN for name in everywhere}, **imported}
 
 
 def key_of(node):
@@ -179,6 +194,9 @@ class Facts(ast.NodeVisitor):
         for at, (kind, names) in enumerate(reversed(self.frames)):
             if kind == "class" and at > 0:
                 continue
+            if names.get(name) is GLOBAL:
+                names = self.frames[0][1]
+                return name if name not in names else None if names[name] is UNKNOWN else names[name]
             if name in names:
                 return None if names[name] is UNKNOWN else names[name]
         return name
