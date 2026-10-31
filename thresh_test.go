@@ -21,6 +21,7 @@ var fixtureSeams = map[string]seam{
 	"shapes":         {Kind: "declared-set", Paths: []string{"shapes.cue"}, Defs: "*#*", Declared: map[string]string{"#Shape": "shape", "#Edge": "edge"}},
 	"binding":        {Kind: "references-resolve", Go: []string{"*.go"}, Cue: []string{"*.cue"}},
 	"profiler":       {Kind: "choke-point", Paths: []string{"pkg/*.py"}, Type: "jax.profiler", OnlyIn: []string{"Profiler.*"}},
+	"traces":         {Kind: "choke-point", Paths: []string{"pkg/*.py"}, Type: "jax.profiler.*_trace", OnlyIn: []string{"Profiler.*"}},
 	"cells":          {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Entries: "CELLS", Declared: map[string]string{"decode": "decode", "prefill": "prefill"}},
 	"cell-funcs":     {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Funcs: "cell_*", Declared: map[string]string{"cell_decode": "decode", "cell_prefill": "prefill"}},
 	"routes":         {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Entries: "ROUTES", Declared: map[string]string{"(wgmma, forward)": "the port"}},
@@ -226,6 +227,13 @@ func TestScenarios(t *testing.T) {
 				appendTo(t, dir, "pkg/profile.py", "\n\nfrom jax import profiler as p\n\n\ndef sneak():\n    p.stop_trace()\n")
 			},
 			[]string{"uses guarded name jax.profiler in module level (line 17)", "uses guarded name jax.profiler.stop_trace in sneak() (line 21)"},
+		},
+		{
+			"a guarded Python name given as a glob matches each use under it",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ndef sneak():\n    jax.profiler.stop_trace()\n")
+			},
+			[]string{"[choke-point: traces] pkg/profile.py", "uses guarded name jax.profiler.stop_trace in sneak()"},
 		},
 		{
 			"a guarded Python name used inside the choke point is silent",

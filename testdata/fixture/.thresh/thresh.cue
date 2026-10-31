@@ -113,3 +113,11 @@ seams: routes: {
 	entries: "ROUTES"
 	declared: "(wgmma, forward)": "the port's measured cell"
 }
+
+seams: traces: {
+	kind:    "choke-point"
+	purpose: "a trace starts and stops in Profiler alone"
+	paths:   ["pkg/*.py"]
+	type:    "jax.profiler.*_trace"
+	onlyIn:  ["Profiler.*"]
+}

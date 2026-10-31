@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -80,7 +81,8 @@ func pyFacts(src string) *pyFile {
 	return &f
 }
 
-// pyUses lists the references to `name` or below it (`name.x`), with the function each sits in.
+// pyUses lists the references to `name` or below it (`name.x`), with the function each sits in. `name`
+// may be a glob ("a.b.tcgen05_*"), matched against each dotted prefix of a use.
 func pyUses(src, name string) []pyUse {
 	f := pyFacts(src)
 	if f == nil || !f.OK {
@@ -88,8 +90,13 @@ func pyUses(src, name string) []pyUse {
 	}
 	var out []pyUse
 	for _, u := range f.Uses {
-		if u.Name == name || strings.HasPrefix(u.Name, name+".") {
-			out = append(out, u)
+		parts := strings.Split(u.Name, ".")
+		for i := range parts {
+			prefix := strings.Join(parts[:i+1], ".")
+			if ok, _ := filepath.Match(name, prefix); ok || prefix == name {
+				out = append(out, u)
+				break
+			}
 		}
 	}
 	return out
