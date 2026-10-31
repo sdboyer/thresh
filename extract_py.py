@@ -9,7 +9,8 @@ need not import or run.
          module level); an import statement is a use of each name it binds
      "registries": {"NAME": [{"key": "k", "line": n}, ...], ...},
          each module-level dict, set, list or tuple literal (or dict(...) call) bound to a name, and each
-         module-level `NAME[k] = ...`: its keys or elements, string constants and dotted names
+         module-level `NAME[k] = ...`: its keys or elements, constants, dotted names and tuples of them
+         ("(a, b)")
      "normalized": "..."}                                            the module's AST without docstrings
 
 "ok" is false, the rest empty, where the source does not parse.
@@ -49,9 +50,13 @@ def bound(node):
 
 
 def key_of(node):
-    """A registry key or element: a string constant's value, or a dotted name; None for anything else."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, (str, int)):
+    """A registry key or element: a string or number constant's value, None as "None", a dotted name, or a
+    tuple of them as "(a, b)"; None for anything else."""
+    if isinstance(node, ast.Constant) and (node.value is None or isinstance(node.value, (str, int))):
         return str(node.value)
+    if isinstance(node, ast.Tuple):
+        parts = [key_of(element) for element in node.elts]
+        return None if None in parts else "(" + ", ".join(parts) + ")"
     return dotted(node, {})
 
 

@@ -23,6 +23,7 @@ var fixtureSeams = map[string]seam{
 	"profiler":       {Kind: "choke-point", Paths: []string{"pkg/*.py"}, Type: "jax.profiler", OnlyIn: []string{"Profiler.*"}},
 	"cells":          {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Entries: "CELLS", Declared: map[string]string{"decode": "decode", "prefill": "prefill"}},
 	"cell-funcs":     {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Funcs: "cell_*", Declared: map[string]string{"cell_decode": "decode", "cell_prefill": "prefill"}},
+	"routes":         {Kind: "declared-set", Paths: []string{"pkg/cells.py"}, Entries: "ROUTES", Declared: map[string]string{"(wgmma, forward)": "the port"}},
 }
 
 // Every kind has at least one loud scenario and one silence scenario. The
@@ -271,6 +272,14 @@ func TestScenarios(t *testing.T) {
 				replace(t, dir, "pkg/cells.py", "\"the prefill cell\"", "\"the prefill cell, renamed\"")
 			},
 			[]string{"[declared-set: cells]", "declared element decode no longer exists", "note"},
+		},
+		{
+			"an undeclared tuple-keyed registry entry is loud, named by its elements",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/cells.py", "    (\"wgmma\", \"forward\"): \"the port\",\n",
+					"    (\"wgmma\", \"forward\"): \"the port\",\n    (\"mma\", None): \"an A100's\",\n")
+			},
+			[]string{"[declared-set: routes]", "undeclared element added: (mma, None)"},
 		},
 		{
 			"an undeclared Python function in a declared set is loud",

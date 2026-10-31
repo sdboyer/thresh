@@ -105,3 +105,11 @@ seams: "cell-funcs": {
 		cell_prefill: "prefill"
 	}
 }
+
+seams: routes: {
+	kind:    "declared-set"
+	purpose: "each route is a measured choice"
+	paths:   ["pkg/cells.py"]
+	entries: "ROUTES"
+	declared: "(wgmma, forward)": "the port's measured cell"
+}

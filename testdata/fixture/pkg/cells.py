@@ -5,6 +5,10 @@ CELLS = {
     "prefill": "the prefill cell",
 }
 
+ROUTES = {
+    ("wgmma", "forward"): "the port",
+}
+
 
 def cell_decode():
     return 1
