@@ -316,6 +316,27 @@ func TestScenarios(t *testing.T) {
 			nil,
 		},
 		{
+			"a rebinding in an ordinary except handler unbinds an import",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ntry:\n    pass\nexcept ValueError:\n    jax = None\n\n\ndef later():\n    return jax.profiler\n")
+			},
+			nil,
+		},
+		{
+			"an optional import's fallback leaves the import",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ntry:\n    import jax\nexcept ImportError:\n    jax = None\n\n\ndef later():\n    jax.profiler.stop_trace()\n")
+			},
+			[]string{"uses guarded name jax.profiler.stop_trace in later()"},
+		},
+		{
+			"a class body's global declaration reads the module's import",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ndef outer(jax):\n    class Capture:\n        global jax\n        trace = jax.profiler.stop_trace()\n    return Capture\n")
+			},
+			[]string{"uses guarded name jax.profiler.stop_trace in outer() (line 21)"},
+		},
+		{
 			"a global declaration reads the module's import past an enclosing parameter",
 			func(t *testing.T, dir string) {
 				appendTo(t, dir, "pkg/profile.py", "\n\ndef outer(jax):\n    def inner():\n        global jax\n        jax.profiler.stop_trace()\n    return inner\n")

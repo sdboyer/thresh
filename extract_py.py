@@ -86,25 +86,41 @@ GLOBAL = object()
 """A name a function declares `global`: read from the module, whatever the scopes between bind."""
 
 
-def walked(body, handlers=True):
+def walked(body, skipped=frozenset()):
     """The nodes of a scope's statements `body`, nested scopes' insides aside (their nodes themselves kept), and
-    the insides of `except` handlers too where `handlers` is false."""
+    the insides of the nodes whose ids are `skipped`."""
     pending = list(body)
     while pending:
         node = pending.pop()
         yield node
-        if not isinstance(node, SCOPES) and (handlers or not isinstance(node, ast.ExceptHandler)):
+        if not isinstance(node, SCOPES) and id(node) not in skipped:
             pending.extend(ast.iter_child_nodes(node))
 
 
-def bindings(body, names=(), handlers=True):
+MISSING = {"ImportError", "ModuleNotFoundError"}
+"""The exceptions an optional import's fallback catches."""
+
+
+def fallbacks(body):
+    """The `except` handlers of a scope's statements `body` that are optional imports' fallbacks: each catches
+    ImportError or ModuleNotFoundError, of a `try` whose body imports."""
+    for node in walked(body):
+        if isinstance(node, ast.Try) and any(isinstance(statement, (ast.Import, ast.ImportFrom))
+                                             for statement in walked(node.body)):
+            for handler in node.handlers:
+                caught = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+                if any(isinstance(kind, ast.Name) and kind.id in MISSING for kind in caught):
+                    yield handler
+
+
+def bindings(body, names=(), skipped=frozenset()):
     """What each name a scope binds is bound to (its statements `body`, its parameters `names`): an import's
     dotted name where every binding of it is the same absolute import, else UNKNOWN; GLOBAL for a name it
     declares `global`. The names of the functions and classes it defines are bound; a name it declares
-    `nonlocal` is left to the scope that binds it. The bindings inside `except` handlers are read where
-    `handlers`."""
+    `nonlocal` is left to the scope that binds it. The bindings inside the nodes whose ids are `skipped` are
+    not read."""
     found, declared, outer = {name: {UNKNOWN} for name in names}, set(), set()
-    for node in walked(body, handlers):
+    for node in walked(body, skipped):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             for local, value in bound(node):
                 found.setdefault(local, set()).add(value)
@@ -125,20 +141,24 @@ def bindings(body, names=(), handlers=True):
     return {**named, **{name: GLOBAL for name in declared}}
 
 
-def module_bindings(body):
-    """A module's (or a class body's) bindings: as `bindings`, but a name bound outside its `except` handlers
-    by one absolute import alone, and inside them by no other import, is that import: the optional import's
-    fallback (`try: import a` / `except ImportError: a = None`) does not unbind it."""
-    everywhere, outside = bindings(body), bindings(body, handlers=False)
-    fallbacks = {}
-    for handler in (node for node in walked(body, handlers=False) if isinstance(node, ast.ExceptHandler)):
+def module_bindings(body, module=False):
+    """A module's (or a class body's) bindings: as `bindings`, but a name bound by one absolute import alone,
+    the optional imports' fallbacks aside (`try: import a` / `except ImportError: a = None`), and by no other
+    import in them, is that import. A module's `global` declarations bind nothing."""
+    handlers = list(fallbacks(body))
+    everywhere = bindings(body)
+    outside = bindings(body, skipped=frozenset(id(handler) for handler in handlers))
+    others = {}
+    for handler in handlers:
         for node in walked(handler.body):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for local, value in bound(node):
-                    fallbacks.setdefault(local, set()).add(value)
+                    others.setdefault(local, set()).add(value)
     imported = {name: value for name, value in outside.items() if value is not UNKNOWN and value is not GLOBAL
-                and fallbacks.get(name, {value}) == {value}}
-    return {**{name: UNKNOWN for name in everywhere}, **imported}
+                and others.get(name, {value}) == {value}}
+    named = {name: UNKNOWN if value is not GLOBAL else GLOBAL for name, value in everywhere.items()
+             if not (module and value is GLOBAL)}
+    return {**named, **imported}
 
 
 def key_of(node):
@@ -208,7 +228,7 @@ class Facts(ast.NodeVisitor):
         self.frames.pop()
 
     def visit_Module(self, node):
-        self.within("module", module_bindings(node.body), node.body)
+        self.within("module", module_bindings(node.body, module=True), node.body)
 
     def definition(self, node):
         """What a function's or a class's definition evaluates where it is defined: its decorators, and a
