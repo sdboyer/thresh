@@ -44,8 +44,9 @@ type seam struct {
 	Watch    []string          `json:"watch"`    // shared-kernel: only changed lines containing these
 	Type     string            `json:"type"`     // choke-point: the guarded type
 	OnlyIn   []string          `json:"onlyIn"`   // choke-point: functions allowed to construct it
-	Funcs    string            `json:"funcs"`    // declared-set: glob on Go function name
+	Funcs    string            `json:"funcs"`    // declared-set: glob on Go or Python function name
 	Defs     string            `json:"defs"`     // declared-set: glob on CUE definition name
+	Entries  string            `json:"entries"`  // declared-set: a Python registry's name; its keys or elements
 	Declared map[string]string `json:"declared"` // declared-set: name -> reason it is Go-side
 	Go       []string          `json:"go"`       // references-resolve: Go files
 	Cue      []string          `json:"cue"`      // references-resolve: CUE files
@@ -53,6 +54,16 @@ type seam struct {
 
 type config struct {
 	Seams map[string]seam `json:"seams"`
+}
+
+// guardedSite is a choke point's site, as each language's extractor reads it:
+// what is done there ("constructs guarded type", "uses guarded name"), to which
+// name, in which function ("" at module or package level), on which line.
+type guardedSite struct {
+	What string
+	Name string
+	Func string
+	Line int
 }
 
 type kind interface {

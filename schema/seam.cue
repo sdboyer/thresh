@@ -42,7 +42,9 @@ seams: [string]: #Seam
 	watch?:   [...string] // if set, only changed lines containing one of these count
 }
 
-// All construction of `type` goes through `onlyIn`.
+// All construction of `type` goes through `onlyIn`. In a Python file, every use of
+// the dotted name `type` (or a name under it) does. onlyIn entries are function
+// names, globs allowed; a Python method is "Class.method".
 #ChokePoint: {
 	kind:    "choke-point"
 	purpose: #Purpose
@@ -53,17 +55,19 @@ seams: [string]: #Seam
 
 // An intentional, enumerated set of code elements. Undeclared additions and
 // stale declarations are flagged; element bodies are not this kind's concern.
-// The elements are either Go functions or CUE definitions: exactly one of funcs
-// or defs.
+// The elements are Go or Python functions, CUE definitions, or the entries of a
+// Python registry: exactly one of funcs, defs or entries.
 #DeclaredSet: {
 	kind:     "declared-set"
 	purpose:  #Purpose
 	paths:    [...string]
 	declared: [string]: string // name -> why it belongs in the set
 	{
-		funcs: string // glob on Go function name, e.g. "check*"
+		funcs: string // glob on Go function name, e.g. "check*"; a Python method is "Class.method"
 	} | {
 		defs: string // glob on CUE definition name at any depth; hidden ones are _#X, so "*#*" covers both
+	} | {
+		entries: string // a module-level Python registry's name: the keys of its dict, or the elements of its set, list or tuple, or each NAME[k] = ...
 	}
 }
 

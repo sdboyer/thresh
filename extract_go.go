@@ -135,3 +135,12 @@ func typeName(e ast.Expr) string {
 	}
 	return ""
 }
+
+// goGuardedSites is goConstructions as choke-point sites.
+func goGuardedSites(src, typeName string) []guardedSite {
+	var out []guardedSite
+	for _, site := range goConstructions(src, typeName) {
+		out = append(out, guardedSite{"constructs guarded type", site.Type, site.EnclosingFunc, site.Line})
+	}
+	return out
+}

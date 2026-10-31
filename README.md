@@ -62,11 +62,12 @@ you owe **consultation**.
 |---|---|---|
 | `published-language` | a versioned contract changes; its format says breaking (loud) or compatible (note). `format: "thema"` reads declared version tuples. `format: "golden"` treats recorded output (a whole file, or a txtar `section`) as the contract: a moved output is loud, a new one is a note, and with `headline: true` only a moved first line is loud. A covered file the format can read nothing from gets a note: the seam is misconfigured. | consequence |
 | `shared-kernel` | co-owned code changes (meaning-bearing changes only); the tap names who to `consult`. `watch` restricts it to changed lines mentioning given strings. | consequence |
-| `choke-point` | a guarded `type` is constructed outside the functions in `onlyIn`, on changed lines. | wrongness |
-| `declared-set` | a Go function matching `funcs`, or a CUE definition (at any depth) matching `defs`, is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |
+| `choke-point` | a guarded `type` is constructed (Go) or the dotted name `type` or one under it is used (Python: a call, an attribute, an absolute import, through the file's imports as Python scopes them, so a parameter or local of the same name is not the import) outside the functions in `onlyIn` (a default, a decorator or a class body runs where it is defined, not in the function or class; a function's annotations are its own) (globs; a Python method is `Class.method`), on changed lines. A Python `type` may be a glob (`a.b.*_trace`), matched against each dotted prefix of a use. | wrongness |
+| `declared-set` | a Go or Python function matching `funcs`, a CUE definition (at any depth) matching `defs`, or an entry of the Python registry `entries` (the keys of a module-level dict, the elements of a set, list or tuple, each `NAME[k] = ...`) is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |
 | `references-resolve` | a Go literal reference into CUE (`cue.Str/Def/Hid`) no longer resolves — checked across *all* Go files, since a CUE rename breaks files you never touched. | wrongness |
 
-Comment-only and whitespace-only edits never fire, for any kind.
+Comment-only and whitespace-only edits never fire, for any kind. A Python file is compared by its syntax
+tree without docstrings, so its indentation still counts and its comments and docstrings do not.
 
 ## Usage
 
@@ -152,7 +153,10 @@ Verdicts are judgments, and they never feed back into what `check` reports.
 
 `git`; `cue` (only to export annotations — the per-kind `#Seam` schema is embedded in the
 binary and unified with your data at load, so bad kinds and typo'd fields are rejected
-with a precise error); Go stdlib (`go/parser` for Go analysis; the target need not build).
+with a precise error); Go stdlib (`go/parser` for Go analysis; the target need not build);
+`python3` for Python files (its stdlib `ast`, run on each file's text; `$THRESH_PYTHON` names
+another; the target need not import or run). Without it, seams over Python files stay silent
+and `check` says so once on stderr.
 
 ## Layout
 
@@ -161,6 +165,8 @@ main.go           CLI: check / explain / init; loads + validates annotations
 kinds.go          the uniform contract every kind satisfies, and the changeset (from git)
 extract_text.go   format-agnostic extractors: touched(), changed lines, watched substrings
 extract_go.go     Go extractors (go/parser): funcs, constructions, literal CUE references
+extract_py.go     Python extractors (the target's python3, stdlib ast; extract_py.py embedded):
+                  funcs, dotted-name uses through imports, registry entries, the docstring-free AST
 extract_cue.go    CUE extractors: definitions + spans, labels, version tuples (thema)
 kind_*.go         one file per kind; each is extract → trivial decision
 taplog.go         the tap log: tap identity, repo identity, events, delivery
