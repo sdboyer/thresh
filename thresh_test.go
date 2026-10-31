@@ -330,6 +330,20 @@ func TestScenarios(t *testing.T) {
 			[]string{"uses guarded name jax.profiler.stop_trace in later()"},
 		},
 		{
+			"a fallback that rebinds a name its try does not import unbinds it",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\ntry:\n    import os\nexcept ImportError:\n    jax = None\n\n\ndef later():\n    return jax.profiler\n")
+			},
+			nil,
+		},
+		{
+			"a module's global declaration binds nothing",
+			func(t *testing.T, dir string) {
+				appendTo(t, dir, "pkg/profile.py", "\n\nglobal tracing\nimport jax as tracing\n\n\ndef outside():\n    tracing.profiler.stop_trace()\n")
+			},
+			[]string{"uses guarded name jax.profiler.stop_trace in outside()"},
+		},
+		{
 			"a class body's global declaration reads the module's import",
 			func(t *testing.T, dir string) {
 				appendTo(t, dir, "pkg/profile.py", "\n\ndef outer(jax):\n    class Capture:\n        global jax\n        trace = jax.profiler.stop_trace()\n    return Capture\n")
