@@ -309,6 +309,13 @@ func TestScenarios(t *testing.T) {
 			nil,
 		},
 		{
+			"an annotation naming a guarded name is its function's",
+			func(t *testing.T, dir string) {
+				replace(t, dir, "pkg/profile.py", "    def stop(self):\n", "    def stop(self, options: jax.profiler.ProfileOptions = None) -> jax.profiler.TraceAnnotation:\n")
+			},
+			nil,
+		},
+		{
 			"a default, a class keyword and a class body run where they are defined, outside the choke point",
 			func(t *testing.T, dir string) {
 				replace(t, dir, "pkg/profile.py", "class Profiler:\n",

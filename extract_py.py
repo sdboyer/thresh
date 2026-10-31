@@ -8,7 +8,8 @@ need not import or run.
          every dotted name referenced whose root is imported (resolved through the import, in the scope the
          name is read in: a parameter or local of the same name shadows it) or bound nowhere in the file, with
          the function it runs in ("" for module level and a module-level class body: a class body runs where
-         the class is defined; a default, a decorator or an annotation runs where its function is defined);
+         the class is defined, a default or a decorator where its function is; a function's annotations are
+         its own);
          an absolute import statement is a use of each name it imports
      "registries": {"NAME": [{"key": "k", "line": n}, ...], ...},
          each module-level dict, set, list or tuple literal (or dict(...) call) bound to a name, and each
@@ -193,7 +194,7 @@ class Facts(ast.NodeVisitor):
 
     def definition(self, node):
         """What a function's or a class's definition evaluates where it is defined: its decorators, and a
-        function's defaults and annotations, a class's bases and keywords."""
+        function's defaults, a class's bases and keywords."""
         for decorator in node.decorator_list:
             self.visit(decorator)
         if isinstance(node, ast.ClassDef):
@@ -203,6 +204,11 @@ class Facts(ast.NodeVisitor):
         args = node.args
         for expression in (*args.defaults, *(default for default in args.kw_defaults if default)):
             self.visit(expression)
+
+    def signature(self, node):
+        """A function's annotations: its signature's, so its own uses, though read where it is defined (a
+        parameter does not shadow them); deferred, they run nowhere until read."""
+        args = node.args
         for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg):
             if arg is not None and arg.annotation is not None:
                 self.visit(arg.annotation)
@@ -221,6 +227,7 @@ class Facts(ast.NodeVisitor):
         self.definition(node)
         self.qualified.append(node.name)
         self.running.append(name)
+        self.signature(node)
         self.within("function", bindings(node.body, arguments(node.args)), node.body)
         self.running.pop()
         self.qualified.pop()
