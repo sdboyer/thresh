@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -32,6 +33,10 @@ func main() {
 		usage()
 	}
 	cmd := os.Args[1]
+	if cmd == "-h" || cmd == "--help" || cmd == "help" {
+		fmt.Print(usageText)
+		return
+	}
 	o := options{repo: "."}
 	for i, args := 0, os.Args[2:]; i < len(args); i++ {
 		val := func() string {
@@ -60,7 +65,14 @@ func main() {
 			o.evidence = val()
 		case "--inaccurate":
 			o.inaccurate = true
+		case "-h", "--help":
+			fmt.Print(usageText)
+			os.Exit(0)
 		default:
+			if strings.HasPrefix(args[i], "-") {
+				fmt.Fprintf(os.Stderr, "thresh: unknown flag %s\n\n", args[i])
+				usage()
+			}
 			o.pos = args[i]
 		}
 	}
@@ -120,6 +132,16 @@ func runCheck(o options, cfg config, stdout, stderr io.Writer) error {
 		return fmt.Errorf("--new needs --session")
 	}
 	cs, err := newChangeset(o.repo, o.pos)
+	if errors.Is(err, errNoCommits) {
+		switch {
+		case o.asJSON:
+			fmt.Fprintln(stdout, "[]")
+		case o.deliver:
+		default:
+			fmt.Fprintln(stdout, "Thresh: this repo has no commits yet, so there is nothing to compare against. Commit once, then check.")
+		}
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -170,6 +192,8 @@ func runCheck(o options, cfg config, stdout, stderr io.Writer) error {
 			fmt.Fprintln(stdout)
 			fmt.Fprint(stdout, protocol)
 		}
+	case cs.worktree && len(cs.changed) == 0:
+		fmt.Fprintln(stdout, "Thresh: the working tree has no uncommitted changes, so there is nothing to check."+cs.aheadHint())
 	default:
 		render(stdout, signals)
 	}
@@ -213,7 +237,11 @@ func review(cmd string, o options, stdout io.Writer) error {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage:
+	fmt.Fprint(os.Stderr, usageText)
+	os.Exit(2)
+}
+
+const usageText = `usage:
   thresh check [A..B] [--repo DIR] [--json]   tap the shoulder about boundaries the changeset crossed
                                                  (no range => uncommitted working tree vs HEAD;
                                                  A..B => B's commits since it left A, from their merge base)
@@ -229,9 +257,9 @@ tap log ($THRESH_LOG, default $XDG_STATE_HOME/thresh/taps.jsonl):
                                               record whether a tap helped
   thresh pending [--repo DIR] [--json]        taps nobody has given a verdict on
   thresh stats [--json]                       taps and verdicts by kind, repo and seam
-`)
-	os.Exit(2)
-}
+
+  -h, --help on any command prints this.
+`
 
 // threshVersion is the module version the binary was built as (a release tag, a
 // pseudo-version, or "(devel)"), with its commit when the version doesn't already name it.
