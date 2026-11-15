@@ -429,7 +429,12 @@ func fixture(t *testing.T) string {
 // in a greppable form.
 func check(t *testing.T, dir string) string {
 	t.Helper()
-	cs, err := newChangeset(dir, "HEAD~1..HEAD")
+	return checkRange(t, dir, "HEAD~1..HEAD")
+}
+
+func checkRange(t *testing.T, dir, rng string) string {
+	t.Helper()
+	cs, err := newChangeset(dir, rng)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,6 +446,42 @@ func check(t *testing.T, dir string) string {
 		}
 	}
 	return b.String()
+}
+
+// A range is the commits on B since it left A. A kernel change that landed on
+// main after the branch left it is main's, not the branch's: silent. The
+// branch's own kernel change is loud, and is the only file the range reports.
+func TestRangeFromMergeBase(t *testing.T) {
+	dir := fixture(t)
+	git(t, dir, "branch", "-M", "main")
+	git(t, dir, "branch", "side")
+	replace(t, dir, "kernel.cue", "name: string", "name: string\n\tlabel: string")
+	commitAll(t, dir, "main moves the kernel")
+
+	git(t, dir, "checkout", "-q", "side")
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("in no seam\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, dir, "side changes nothing consequential")
+	for _, rng := range []string{"main..side", "main...side"} {
+		if got := checkRange(t, dir, rng); got != "" {
+			t.Errorf("%s: main's own change was reported as the branch's:\n%s", rng, got)
+		}
+	}
+
+	replace(t, dir, "kernel.cue", "to:   string", "to:   string\n\tvia?: string")
+	commitAll(t, dir, "side moves the kernel")
+	got := checkRange(t, dir, "main..side")
+	if !strings.Contains(got, "[shared-kernel: kernel] kernel.cue") || strings.Contains(got, "label") {
+		t.Errorf("main..side: want one kernel tap for the branch's change only, got:\n%s", got)
+	}
+	cs, err := newChangeset(dir, "main..side")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "kernel.cue notes.txt"; strings.Join(cs.changed, " ") != want {
+		t.Errorf("main..side changed files = %v, want %s", cs.changed, want)
+	}
 }
 
 func git(t *testing.T, dir string, args ...string) {

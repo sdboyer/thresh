@@ -215,7 +215,8 @@ func review(cmd string, o options, stdout io.Writer) error {
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
   thresh check [A..B] [--repo DIR] [--json]   tap the shoulder about boundaries the changeset crossed
-                                                 (no range => uncommitted working tree vs HEAD)
+                                                 (no range => uncommitted working tree vs HEAD;
+                                                 A..B => B's commits since it left A, from their merge base)
   thresh explain [--repo DIR]                 render the seams as agent guidance (for AGENTS.md)
   thresh init [--repo DIR]                    scaffold .thresh/thresh.yaml with every kind as an example
   thresh version                              the release this binary is, and the commit it was built from
