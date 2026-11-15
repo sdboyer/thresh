@@ -41,6 +41,9 @@ func versionChange(f changedFile, format string, vb, va []ver) (string, string) 
 		return "", "" // deleted
 	case len(va) == 0:
 		return "note", fmt.Sprintf("format %s found no versions in this file, so this seam cannot judge its compatibility. Check the seam's paths and format.", format)
+	case len(vb) == 0:
+		// New, restored, or unreadable before: no earlier version to have broken.
+		return "note", fmt.Sprintf("versions declared where there were none: %s. Before this change the file declared no version of this contract.", fmtVers(va))
 	case maxMajor(va) > maxMajor(vb):
 		return "step-back", fmt.Sprintf("breaking change: max version %s → %s (major bump). Consumers you don't control depend on this contract.",
 			fmtVer(maxVer(vb)), fmtVer(maxVer(va)))

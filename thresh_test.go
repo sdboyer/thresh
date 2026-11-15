@@ -47,6 +47,13 @@ func TestScenarios(t *testing.T) {
 			[]string{"[published-language: lineages]", "step-back", "breaking change", "1.0 → 2.0"},
 		},
 		{
+			"a new contract file is a note, not a major bump",
+			func(t *testing.T, dir string) {
+				write(t, dir, "schemas/fresh.cue", "package fixture\n\nfresh: schemas: {\n\t\"0\": \"0\": schema: {a: string}\n\t\"0\": \"1\": schema: {a: string, b?: int}\n}\n")
+			},
+			[]string{"[published-language: lineages] schemas/fresh.cue note: versions declared where there were none: {0.0 0.1}"},
+		},
+		{
 			"compatible minor is a note",
 			func(t *testing.T, dir string) {
 				replace(t, dir, "schemas/contract.cue",
