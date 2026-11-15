@@ -77,6 +77,7 @@ seams:
 
   # connections:
   #   # choke-point: all construction of a type goes through the named functions.
+  #   # Qualify the type (db.conn) to catch db.conn{} built in other packages too.
   #   kind: choke-point
   #   purpose: Open sets the timeouts and TLS config every connection needs
   #   paths: ["*.go"]

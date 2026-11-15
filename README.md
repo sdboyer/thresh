@@ -62,7 +62,7 @@ you owe **consultation**.
 |---|---|---|
 | `published-language` | a versioned contract changes; its format says breaking (loud) or compatible (note). `format: "thema"` reads declared version tuples. `format: "golden"` treats recorded output (a whole file, or a txtar `section`) as the contract: a moved output is loud, a new one is a note, and with `headline: true` only a moved first line is loud. A covered file the format can read nothing from gets a note: the seam is misconfigured. | consequence |
 | `shared-kernel` | co-owned code changes (meaning-bearing changes only); the tap names who to `consult`. `watch` restricts it to changed lines mentioning given strings. | consequence |
-| `choke-point` | a guarded `type` is constructed outside the functions in `onlyIn`, on changed lines. | wrongness |
+| `choke-point` | a guarded `type` is constructed (`T{}`, `&T{}`, `new(T)`, generic `T[X]{}`) outside the functions in `onlyIn`, on changed lines. A bare `type: T` matches only unqualified constructions; `type: pkg.T` matches `pkg.T{}` from other packages (an import alias resolves to its path) and a bare `T{}` inside package `pkg`. | wrongness |
 | `declared-set` | a Go function matching `funcs`, or a CUE definition (at any depth) matching `defs`, is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |
 | `references-resolve` | a Go literal reference into CUE (`cue.Str/Def/Hid`) no longer resolves — checked across *all* Go files, since a CUE rename breaks files you never touched. | wrongness |
 

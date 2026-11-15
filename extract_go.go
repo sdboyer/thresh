@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"strconv"
+	"strings"
 )
 
 type goFunc struct {
@@ -44,14 +45,52 @@ type goSite struct {
 }
 
 // goConstructions finds constructions of typeName — composite literals (T{} or
-// &T{}) and new(T) — inside function bodies, with the enclosing function.
-// Package-level occurrences (e.g. `var _ I = &T{}` interface assertions) are
-// deliberately not constructions.
+// &T{}) and new(T), generic instantiations (T[X]{}, new(T[X])) included — inside
+// function bodies, with the enclosing function. Package-level occurrences (e.g.
+// `var _ I = &T{}` interface assertions) are deliberately not constructions.
+//
+// A bare typeName (T) matches only the unqualified T{}. A qualified one (pkg.T)
+// matches x.T{} where x is the package pkg: imported without an alias (so x is
+// its name), or under an alias whose import path's last element (less a /vN
+// suffix) is pkg. It also matches a bare T{} in a file declaring package pkg.
 func goConstructions(src, typeName string) []goSite {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "", src, 0)
 	if err != nil {
 		return nil
+	}
+	pkg, name := "", typeName
+	if i := strings.LastIndex(typeName, "."); i >= 0 {
+		pkg, name = typeName[:i], typeName[i+1:]
+	}
+	aliased := map[string]string{} // local name -> import path, for aliased imports
+	for _, imp := range f.Imports {
+		if imp.Name != nil {
+			path, _ := strconv.Unquote(imp.Path.Value)
+			aliased[imp.Name.Name] = path
+		}
+	}
+	guarded := func(t ast.Expr) bool {
+		switch x := t.(type) { // a generic instantiation constructs its base type
+		case *ast.IndexExpr:
+			t = x.X
+		case *ast.IndexListExpr:
+			t = x.X
+		}
+		switch x := t.(type) {
+		case *ast.Ident:
+			return x.Name == name && (pkg == "" || f.Name.Name == pkg)
+		case *ast.SelectorExpr:
+			id, ok := x.X.(*ast.Ident)
+			if !ok || pkg == "" || x.Sel.Name != name {
+				return false
+			}
+			if path, ok := aliased[id.Name]; ok {
+				return importPathName(path) == pkg
+			}
+			return id.Name == pkg
+		}
+		return false
 	}
 	var out []goSite
 	for _, d := range f.Decls {
@@ -62,20 +101,29 @@ func goConstructions(src, typeName string) []goSite {
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			switch e := n.(type) {
 			case *ast.CompositeLit:
-				if id, ok := e.Type.(*ast.Ident); ok && id.Name == typeName {
+				if guarded(e.Type) {
 					out = append(out, goSite{typeName, fn.Name.Name, fset.Position(e.Pos()).Line})
 				}
 			case *ast.CallExpr:
-				if id, ok := e.Fun.(*ast.Ident); ok && id.Name == "new" && len(e.Args) == 1 {
-					if arg, ok := e.Args[0].(*ast.Ident); ok && arg.Name == typeName {
-						out = append(out, goSite{typeName, fn.Name.Name, fset.Position(e.Pos()).Line})
-					}
+				if id, ok := e.Fun.(*ast.Ident); ok && id.Name == "new" && len(e.Args) == 1 && guarded(e.Args[0]) {
+					out = append(out, goSite{typeName, fn.Name.Name, fset.Position(e.Pos()).Line})
 				}
 			}
 			return true
 		})
 	}
 	return out
+}
+
+// importPathName is the package name an import path conventionally declares:
+// its last element, or the one before a major-version suffix (/v2).
+func importPathName(path string) string {
+	parts := strings.Split(path, "/")
+	last := parts[len(parts)-1]
+	if len(parts) > 1 && len(last) > 1 && last[0] == 'v' && strings.Trim(last[1:], "0123456789") == "" {
+		last = parts[len(parts)-2]
+	}
+	return last
 }
 
 type goRef struct {
