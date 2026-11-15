@@ -143,6 +143,13 @@ func TestScenarios(t *testing.T) {
 			[]string{"[choke-point: build]", "Sneaky()", "guarded"},
 		},
 		{
+			"generic construction outside the choke point is loud",
+			func(t *testing.T, dir string) {
+				write(t, dir, "sneaky.go", "package fixture\n\nfunc Sneaky() any { return &guarded[int]{} }\n")
+			},
+			[]string{"[choke-point: build]", "Sneaky()", "guarded"},
+		},
+		{
 			"construction inside the sanctioned function is silent",
 			func(t *testing.T, dir string) {
 				// parse-only fixture: a construction inside a function named Build
