@@ -8,8 +8,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # Only TestAnnotationsValidate needs cue (loadConfig exports annotations with it).
-      - run: go install cuelang.org/go/cmd/cue@latest
       - run: gofmt -l . && test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test ./...
