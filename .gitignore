@@ -1,2 +1,4 @@
 # built binary (use `go install .` to put it on PATH)
 /thresh
+# goreleaser output (`goreleaser release --snapshot` locally)
+dist/

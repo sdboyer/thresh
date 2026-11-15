@@ -9,7 +9,7 @@
 # Install:  copy this file to ~/.claude/hooks/run-thresh.sh (chmod +x) and add
 #   "hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command",
 #     "command": "~/.claude/hooks/run-thresh.sh", "timeout": 30}]}]}
-# The `thresh` binary should be on PATH (go install from the thresh checkout);
+# The `thresh` binary should be on PATH (see "Install" in the thresh README);
 # GOPATH/bin is tried as a fallback for GUI-launched sessions with a thin PATH.
 set -uo pipefail
 INPUT=$(cat)
@@ -38,7 +38,7 @@ find_thresh() {
 }
 
 COH=$(find_thresh) || {
-  jq -n '{systemMessage: "⚠️ thresh: this repo has .thresh/ but the thresh binary was not found on PATH or in GOPATH/bin (go install it from the thresh checkout)."}'
+  jq -n '{systemMessage: "⚠️ thresh: this repo has .thresh/ but the thresh binary was not found on PATH or in GOPATH/bin. Install it: https://github.com/sdboyer/thresh#install"}'
   exit 0
 }
 

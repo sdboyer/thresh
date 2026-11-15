@@ -1,0 +1,30 @@
+# Run by .github/workflows/release.yml when a v* tag is pushed. See RELEASING.md.
+version: 2
+project_name: thresh
+
+builds:
+  - env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    # No -X version variables: `thresh version` reads the module version and commit Go
+    # stamps into every build, so a release binary and `go install …@vX` report alike.
+    ldflags: [-s -w]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - hooks/*
+      - skills/**/*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github-native
+
+release:
+  prerelease: auto
