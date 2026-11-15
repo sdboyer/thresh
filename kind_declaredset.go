@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -13,21 +14,36 @@ import (
 type declaredSet struct{}
 
 func (declaredSet) assess(name string, s seam, cs *changeset) []signal {
-	glob, elems := s.Funcs, goFuncElements
-	if s.Defs != "" {
-		glob, elems = s.Defs, cueDefElements
-	}
 	var out []signal
 	for _, f := range cs.under(s.Paths) {
+		glob, elems := s.Funcs, goFuncElements
+		switch {
+		case s.Defs != "":
+			glob, elems = s.Defs, cueDefElements
+		case s.Entries != "":
+			glob, elems = "", pyRegistryElements(s.Entries) // a registry's keys are identities, not names to glob
+		case isPython(f.Path):
+			elems = pyFuncElements
+		}
+		in := func(e element) bool {
+			ok, _ := filepath.Match(glob, e.name)
+			return glob == "" || ok
+		}
+		was, wasRead := elems(f.Before)
+		now, nowRead := elems(f.After)
+		if !wasRead || !nowRead {
+			fmt.Fprintf(os.Stderr, "thresh: %s cannot be read on one side of the diff (it does not parse, or python3 cannot run); seam %s does not compare its set there\n", f.Path, name)
+			continue
+		}
 		before := map[string]bool{}
-		for _, e := range elems(f.Before) {
-			if ok, _ := filepath.Match(glob, e.name); ok {
+		for _, e := range was {
+			if in(e) {
 				before[e.name] = true
 			}
 		}
 		after := map[string]bool{}
-		for _, e := range elems(f.After) {
-			if ok, _ := filepath.Match(glob, e.name); !ok {
+		for _, e := range now {
+			if !in(e) {
 				continue
 			}
 			after[e.name] = true
@@ -52,18 +68,21 @@ type element struct {
 	line int
 }
 
-func goFuncElements(src string) []element {
+// The element extractors return a source's elements and whether it was read: a
+// set is compared only where both sides were. Go and CUE sources read as empty
+// where they do not parse.
+func goFuncElements(src string) ([]element, bool) {
 	var out []element
 	for _, fn := range goFuncs(src) {
 		out = append(out, element{fn.Name, fn.Line})
 	}
-	return out
+	return out, true
 }
 
-func cueDefElements(src string) []element {
+func cueDefElements(src string) ([]element, bool) {
 	var out []element
 	for _, d := range cueDefLabels(src) {
 		out = append(out, element{d.Name, d.Line})
 	}
-	return out
+	return out, true
 }

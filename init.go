@@ -93,6 +93,25 @@ seams:
   #   declared:
   #     checkShape: why this rule is enforced here and nowhere else
 
+  # profiler:
+  #   # choke-point in Python: every use of a dotted name goes through the
+  #   # named functions (methods as "Class.method", globs allowed).
+  #   kind: choke-point
+  #   purpose: Profiler owns the trace's lifetime and where it is written
+  #   paths: ["src/*/*.py"]
+  #   type: jax.profiler
+  #   onlyIn: ["Profiler.*"]
+
+  # routes:
+  #   # declared-set over a Python registry: the keys of a module-level dict
+  #   # (or the elements of a set, list or tuple), each one an intentional entry.
+  #   kind: declared-set
+  #   purpose: each route is a contract a client was promised
+  #   paths: [app/routes.py]
+  #   entries: ROUTES
+  #   declared:
+  #     /health: why this route exists
+
   # kernel-defs:
   #   # declared-set over CUE definitions (at any depth), instead of Go
   #   # functions. Hidden definitions are named _#X, so "*#*" covers both.

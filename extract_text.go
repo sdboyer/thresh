@@ -33,9 +33,33 @@ func stripNoise(s string) string {
 
 // touched reports whether a file's meaning-bearing content changed. This is the
 // shared precision lever: comment-only and whitespace-only edits are not touches,
-// for every kind that uses it.
+// for every kind that uses it. A Python file compares its syntax trees without
+// docstrings (`pyTouched`), since its indentation is meaning; where either side
+// does not parse, its text without `#` comments.
 func touched(f changedFile) bool {
+	if isPython(f.Path) {
+		if changed, ok := pyTouched(f.Before, f.After); ok {
+			return changed
+		}
+		return stripHashNoise(f.Before) != stripHashNoise(f.After)
+	}
 	return stripNoise(f.Before) != stripNoise(f.After)
+}
+
+var hashCommentRE = regexp.MustCompile(`#.*$`)
+
+// stripHashNoise is stripNoise for `#` comments (a `#` inside a string literal is
+// also stripped; the same heuristic).
+func stripHashNoise(s string) string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		l = hashCommentRE.ReplaceAllString(l, "")
+		l = strings.Join(strings.Fields(l), " ")
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // addedLines returns the line numbers added/modified on the new side of the diff.

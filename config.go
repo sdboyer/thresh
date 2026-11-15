@@ -28,11 +28,14 @@ var kindFields = map[string][]field{
 	"published-language": {{"paths", true}, {"format", true}, {"section", false}, {"headline", false}},
 	// Code co-owned by contexts you can name. You owe them consultation.
 	"shared-kernel": {{"paths", true}, {"consult", false}, {"watch", false}},
-	// All construction of type goes through onlyIn.
+	// All construction of type goes through onlyIn. In a Python file, every use of
+	// the dotted name type (or a name under it) does. onlyIn entries are function
+	// names, globs allowed; a Python method is "Class.method".
 	"choke-point": {{"paths", true}, {"type", true}, {"onlyIn", true}},
-	// An intentional, enumerated set of Go functions (funcs) or CUE definitions
-	// (defs): exactly one of the two.
-	"declared-set": {{"paths", true}, {"funcs", false}, {"defs", false}, {"declared", false}},
+	// An intentional, enumerated set of Go or Python functions (funcs), CUE
+	// definitions (defs), or the entries of a Python registry (entries): exactly
+	// one of the three.
+	"declared-set": {{"paths", true}, {"funcs", false}, {"defs", false}, {"entries", false}, {"declared", false}},
 	// Go reaches into CUE by literal path; every reference must resolve.
 	"references-resolve": {{"go", true}, {"cue", true}},
 }
@@ -196,8 +199,14 @@ func decodeSeam(n *yaml.Node) (seam, []seamError) {
 			}
 		}
 	case "declared-set":
-		if (s.Funcs == "") == (s.Defs == "") {
-			errs = append(errs, seamError{n.Line, "declared-set takes exactly one of funcs (Go functions) or defs (CUE definitions)"})
+		set := 0
+		for _, v := range []string{s.Funcs, s.Defs, s.Entries} {
+			if v != "" {
+				set++
+			}
+		}
+		if set != 1 {
+			errs = append(errs, seamError{n.Line, "declared-set takes exactly one of funcs (Go or Python functions), defs (CUE definitions) or entries (a Python registry)"})
 		}
 	}
 	return s, errs

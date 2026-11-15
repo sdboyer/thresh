@@ -43,11 +43,14 @@ func obligation(s seam) string {
 		}
 		return fmt.Sprintf("%s is co-owned kernel. A change there owes consultation with: %s.", p, who)
 	case "choke-point":
-		return fmt.Sprintf("in %s, only %s may construct %s. Constructing it elsewhere skips what the choke point enforces.", p, strings.Join(s.OnlyIn, "/"), s.Type)
+		return fmt.Sprintf("in %s, only %s may construct (Go) or use (Python) %s. Doing so elsewhere skips what the choke point enforces.", p, strings.Join(s.OnlyIn, "/"), s.Type)
 	case "declared-set":
 		what := s.Funcs + " functions"
 		if s.Defs != "" {
 			what = s.Defs + " definitions"
+		}
+		if s.Entries != "" {
+			what = "entries of " + s.Entries
 		}
 		return fmt.Sprintf("the %s in %s are an intentional, enumerated set (%d declared). Adding one requires declaring why it belongs.", what, p, len(s.Declared))
 	case "references-resolve":
