@@ -113,6 +113,3 @@ only when asked.
   Fine at current volumes; compaction or an index when it isn't.
 - A worktree-mode run and a range-mode run over the same change resolve different bases,
   so they log the same crossing under different tap IDs.
-- `thresh check` fails with "git diff failed: exit status 128" in a repo with no commits
-  (unborn HEAD). It should diff against the empty tree, or say plainly that there's nothing
-  to compare against yet.

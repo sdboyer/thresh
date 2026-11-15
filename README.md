@@ -86,7 +86,7 @@ go install github.com/sdboyer/thresh@latest
 
 ```sh
 thresh init               # scaffold .thresh/thresh.yaml (every kind as an example)
-thresh check              # uncommitted working tree vs HEAD (includes untracked files)
+thresh check              # uncommitted working tree vs HEAD (includes untracked files); on a clean tree, names the range for commits HEAD is ahead by
 thresh check main..HEAD   # the commits on HEAD since it left main, from their merge base (A...B is the same)
 thresh check --json
 thresh check --session S --new   # only taps this session hasn't been told about (the delivery hook)

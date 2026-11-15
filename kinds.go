@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,6 +85,9 @@ type changeset struct {
 func newChangeset(repo, rng string) (*changeset, error) {
 	cs := &changeset{repo: repo, cache: map[string]*changedFile{}}
 	if rng == "" {
+		if _, err := cs.resolve("HEAD"); err != nil {
+			return nil, errNoCommits
+		}
 		cs.worktree, cs.base, cs.diffspec = true, "HEAD", "HEAD"
 	} else {
 		// A..B and A...B both mean the commits on B since it left A, diffed from
@@ -134,6 +138,29 @@ func newChangeset(repo, rng string) (*changeset, error) {
 		}
 	}
 	return cs, nil
+}
+
+// errNoCommits is a working-tree check in a repo whose HEAD has no commit yet:
+// there is no base to compare against, and no root commit to identify taps by.
+var errNoCommits = errors.New("no commits yet")
+
+// aheadHint names the range that would check committed work, when HEAD is ahead
+// of the remote's default branch or of its own upstream; "" when it is neither.
+func (cs *changeset) aheadHint() string {
+	var refs []string
+	if def, err := cs.git("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		refs = append(refs, strings.TrimSpace(def))
+	}
+	if up, err := cs.git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil {
+		refs = append(refs, strings.TrimSpace(up))
+	}
+	for _, ref := range refs {
+		out, err := cs.git("rev-list", "--count", ref+"..HEAD")
+		if n := strings.TrimSpace(out); err == nil && n != "0" {
+			return fmt.Sprintf(" HEAD is %s commit(s) ahead of %s; `thresh check %s..HEAD` checks them.", n, ref, ref)
+		}
+	}
+	return ""
 }
 
 func (cs *changeset) resolve(ref string) (string, error) {
