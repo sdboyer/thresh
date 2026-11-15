@@ -312,6 +312,9 @@ func TestAnnotationsValidate(t *testing.T) {
 		// CUE config is no longer read; a leftover is an error, not silence.
 		{"leftover cue config", map[string]string{"thresh.cue": "package thresh\n"},
 			[]string{".thresh/thresh.cue", "YAML now"}},
+		// A config thresh can't read is an error, not a repo that declares nothing.
+		{"unknown config format", map[string]string{"thresh.toml": "[seams]\n"},
+			[]string{".thresh/thresh.toml", "only from .thresh/*.yaml"}},
 	} {
 		bad := t.TempDir()
 		for f, body := range c.files {
@@ -327,6 +330,13 @@ func TestAnnotationsValidate(t *testing.T) {
 				t.Errorf("%s: error lacks %q:\n%v", c.name, w, err)
 			}
 		}
+	}
+
+	// An empty .thresh/, or one holding only dotfiles, declares nothing, quietly.
+	bare := t.TempDir()
+	write(t, bare, ".thresh/.DS_Store", "")
+	if cfg, err := loadConfig(bare); err != nil || len(cfg.Seams) != 0 {
+		t.Errorf(".thresh/ with only a dotfile: expected no seams and no error, got %v, %v", cfg, err)
 	}
 
 	// A file with every seam still commented out declares nothing, quietly.

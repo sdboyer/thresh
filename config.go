@@ -56,6 +56,18 @@ func loadConfig(repo string) (config, error) {
 	files := append(yamls, ymls...)
 	sort.Strings(files)
 	if len(files) == 0 {
+		// Files thresh doesn't read (another format, a newer thresh's) would
+		// otherwise look like a repo that declares nothing, and go quiet.
+		entries, _ := os.ReadDir(dir)
+		var other []string
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Name(), ".") {
+				other = append(other, filepath.Join(".thresh", e.Name()))
+			}
+		}
+		if len(other) > 0 {
+			return config{}, fmt.Errorf("%s: thresh reads seams only from .thresh/*.yaml (and *.yml), and there are none; this config is for another thresh, or needs moving into .thresh/thresh.yaml", strings.Join(other, ", "))
+		}
 		return config{}, nil // no annotations: nothing consequential is declared
 	}
 

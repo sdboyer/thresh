@@ -49,7 +49,9 @@ seams:
 That's everything a user specifies. Each kind takes a fixed set of fields, so a typo or
 a field from another kind is rejected at load, with its file and line. Seams are keyed by
 name so taps carry a stable name, and every `.thresh/*.yaml` is read: split seams across
-files as you like, but a name declared twice is an error. Reuse a path set with a YAML
+files as you like, but a name declared twice is an error. A `.thresh/` holding files but no
+YAML is an error too, so a config this thresh can't read never passes for one that declares
+nothing. Reuse a path set with a YAML
 anchor (`paths: &go ["*.go"]`, then `go: *go`).
 
 ## The catalog
