@@ -89,6 +89,11 @@ The suite is self-contained on purpose: it must never depend on an external chec
 Real-world pilots (thema was the first) are for discovering kinds and bugs, not for the
 test loop.
 
+## Releasing
+
+Pushing a `v*` tag on `main` publishes a release; `RELEASING.md` is the procedure. Cut one
+only when asked.
+
 ## Known follow-ups (don't let these block, don't skip past them silently)
 
 - Extractor return types are loose; tidying them is wanted before the library grows.

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
+	"strings"
 )
 
 // options is every flag any command takes; each command reads the ones it needs.
@@ -68,6 +70,9 @@ func main() {
 		if err := initRepo(o.repo); err != nil {
 			fail(err)
 		}
+		return
+	case "version":
+		fmt.Println("thresh", threshVersion())
 		return
 	case "verdict", "pending", "stats":
 		if err := review(cmd, o, os.Stdout); err != nil {
@@ -213,6 +218,7 @@ func usage() {
                                                  (no range => uncommitted working tree vs HEAD)
   thresh explain [--repo DIR]                 render the seams as agent guidance (for AGENTS.md)
   thresh init [--repo DIR]                    scaffold .thresh/thresh.yaml with every kind as an example
+  thresh version                              the release this binary is, and the commit it was built from
 
   check also takes --session ID --transcript PATH (provenance for the tap log) and
   --new (report only taps this session hasn't been told about; needs --session).
@@ -224,6 +230,26 @@ tap log ($THRESH_LOG, default $XDG_STATE_HOME/thresh/taps.jsonl):
   thresh stats [--json]                       taps and verdicts by kind, repo and seam
 `)
 	os.Exit(2)
+}
+
+// threshVersion is the module version the binary was built as (a release tag, a
+// pseudo-version, or "(devel)"), with its commit when the version doesn't already name it.
+func threshVersion() string {
+	var v string
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		v = bi.Main.Version
+	}
+	return versionOf(v, threshRevision())
+}
+
+func versionOf(version, rev string) string {
+	switch {
+	case version == "":
+		return rev
+	case rev == "" || strings.Contains(version, strings.TrimSuffix(rev, "+dirty")):
+		return version
+	}
+	return version + " (" + rev + ")"
 }
 
 func fail(err error) {

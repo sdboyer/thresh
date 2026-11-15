@@ -68,10 +68,22 @@ you owe **consultation**.
 
 Comment-only and whitespace-only edits never fire, for any kind.
 
+## Install
+
+Download a release for macOS or Linux (amd64, arm64) from
+[Releases](https://github.com/sdboyer/thresh/releases) and put `thresh` on your PATH. Each
+archive also holds the Claude Code hooks and the `thresh-sweep` skill described below. Or
+build it with Go:
+
+```sh
+go install github.com/sdboyer/thresh@latest
+```
+
+`thresh version` names the release a binary is and the commit it was built from.
+
 ## Usage
 
 ```sh
-go install .                 # from this checkout; puts `thresh` on PATH
 thresh init               # scaffold .thresh/thresh.yaml (every kind as an example)
 thresh check              # uncommitted working tree vs HEAD (includes untracked files)
 thresh check main..HEAD   # a commit range
