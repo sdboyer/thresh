@@ -41,19 +41,29 @@ func TestScenarios(t *testing.T) {
 			"breaking major bump is loud",
 			func(t *testing.T, dir string) {
 				replace(t, dir, "schemas/contract.cue",
-					"{version: [1, 0], schema: {b: int}},",
-					"{version: [1, 0], schema: {b: int}},\n\t\t{version: [2, 0], schema: {c: bool}},")
+					"\t\t\"1\": \"0\": {\n\t\t\tschema: {b: int}\n\t\t}\n",
+					"\t\t\"1\": \"0\": {\n\t\t\tschema: {b: int}\n\t\t}\n\t\t\"2\": \"0\": {\n\t\t\tschema: {c: bool}\n\t\t}\n")
 			},
-			[]string{"[published-language: lineages]", "breaking change", "[1,0] → [2,0]"},
+			[]string{"[published-language: lineages]", "step-back", "breaking change", "1.0 → 2.0"},
 		},
 		{
 			"compatible minor is a note",
 			func(t *testing.T, dir string) {
 				replace(t, dir, "schemas/contract.cue",
-					"{version: [1, 0], schema: {b: int}},",
-					"{version: [1, 0], schema: {b: int}},\n\t\t{version: [1, 1], schema: {b: int, d?: string}},")
+					"\t\t\"1\": \"0\": {\n\t\t\tschema: {b: int}\n\t\t}\n",
+					"\t\t\"1\": \"0\": {\n\t\t\tschema: {b: int}\n\t\t}\n\t\t\"1\": \"1\": {\n\t\t\tschema: {b: int, d?: string}\n\t\t}\n")
 			},
-			[]string{"[published-language: lineages]", "compatible change", "note"},
+			[]string{"[published-language: lineages]", "note", "compatible change: versions {0.0 1.0} → {0.0 1.0 1.1}"},
+		},
+		{
+			"a schema edit that declares no version is a no-version-change note",
+			func(t *testing.T, dir string) {
+				// Version-shaped text inside a schema and in a comment is not a version key.
+				replace(t, dir, "schemas/contract.cue",
+					"\t\t\tschema: {b: int}",
+					"\t\t\t// \"2\": \"0\": {\n\t\t\tschema: {b: int, \"2\": \"0\": *\"3\" | string}")
+			},
+			[]string{"[published-language: lineages]", "note", "contract touched with no version change"},
 		},
 		{
 			"comment-only edit to the contract is silent",

@@ -6,7 +6,7 @@ by looking at it — never an opinion.
 
 Rice's theorem says you can't decide anything interesting about what a program *means*.
 thresh doesn't argue; it threshes. It separates signal from chaff by properties you can
-actually check — a version tuple moved, a guard got bypassed, a reference stopped
+actually check — a major version moved, a guard got bypassed, a reference stopped
 resolving — and leaves judging the grain to you. (A threshold is just a boundary with a
 name.)
 
@@ -60,7 +60,7 @@ you owe **consultation**.
 
 | kind | fires when | fires on |
 |---|---|---|
-| `published-language` | a versioned contract changes; its format says breaking (loud) or compatible (note). `format: "thema"` reads declared version tuples. `format: "golden"` treats recorded output (a whole file, or a txtar `section`) as the contract: a moved output is loud, a new one is a note, and with `headline: true` only a moved first line is loud. A covered file the format can read nothing from gets a note: the seam is misconfigured. | consequence |
+| `published-language` | a versioned contract changes; its format says breaking (loud) or compatible (note). `format: "thema"` reads the versions each lineage declares as its `schemas` keys (`"1": "0"` is version 1.0); a new major is loud, a new minor is a note. `format: "golden"` treats recorded output (a whole file, or a txtar `section`) as the contract: a moved output is loud, a new one is a note, and with `headline: true` only a moved first line is loud. A covered file the format can read nothing from gets a note: the seam is misconfigured. | consequence |
 | `shared-kernel` | co-owned code changes (meaning-bearing changes only); the tap names who to `consult`. `watch` restricts it to changed lines mentioning given strings. | consequence |
 | `choke-point` | a guarded `type` is constructed outside the functions in `onlyIn`, on changed lines. | wrongness |
 | `declared-set` | a Go function matching `funcs`, or a CUE definition (at any depth) matching `defs`, is added without being in `declared` (loud), or a declared one disappears (note). Bodies are not its concern. | wrongness |
@@ -97,7 +97,7 @@ Output:
 ```
 ## Thresh
 ⚑ STEP BACK [published-language: lineages] exemplars/narrowing.cue  #3f9a2c1e7b04
-    breaking change: max version [1,0] → [2,0] (major bump). Consumers you don't control depend on this contract.
+    breaking change: max version 1.0 → 2.0 (major bump). Consumers you don't control depend on this contract.
 · [shared-kernel: lineage-kernel] lineage.cue  #b81d07e45a2c
     co-owned kernel changed: #Lineage. Consult: every lineage author; the Go facade.
 ```
@@ -173,7 +173,7 @@ config.go         loads .thresh/*.yaml; each kind's closed field set, and valida
 kinds.go          the uniform contract every kind satisfies, and the changeset (from git)
 extract_text.go   format-agnostic extractors: touched(), changed lines, watched substrings
 extract_go.go     Go extractors (go/parser): funcs, constructions, literal CUE references
-extract_cue.go    CUE extractors: definitions + spans, labels, version tuples (thema)
+extract_cue.go    CUE extractors: definitions + spans, labels, lineage version keys (thema)
 kind_*.go         one file per kind; each is extract → trivial decision
 taplog.go         the tap log: tap identity, repo identity, events, delivery
 review.go         verdict / pending / stats over the tap log; the verdict protocol
