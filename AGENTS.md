@@ -44,10 +44,12 @@ If a change needs one of these relaxed, stop and raise it instead.
    kind, the kind names, tap, and verdict. Internal words (extent, projection, predicate, extractor, node/edge) stay
    internal.
 
-7. **The schema is the single source.** `schema/seam.cue` is embedded and unified with
-   each repo's data at load. One **closed** definition per kind, so misplaced fields and
-   typos are rejected. Repos never import it and never restate it. Adding a field to a kind
-   means: schema definition, `seam` struct in `kinds.go`, the kind, `explain.go`, `init.go`.
+7. **The schema is the single source.** Annotations are YAML (`.thresh/*.yaml`), and
+   `kindFields` in `config.go` is the contract they're validated against at load. One
+   **closed** field set per kind, so misplaced fields and typos are rejected, with file and
+   line. Repos never restate it. Adding a field to a kind means: `kindFields` (and any
+   value check in `decodeSeam`), `seam` struct in `kinds.go`, the kind, `explain.go`,
+   `init.go`.
 
 8. **Enumerable vs. non-enumerable consumers** is the distinction between the two
    consequence kinds. `published-language` requires a declared or checkable compatibility
@@ -79,7 +81,7 @@ small synthetic project: a versioned contract, a CUE kernel, a Go binding with a
 point and a declared check set, `go.mod`/`cue.mod`). It asserts both the loud cases and the
 silence cases. The silence cases are not optional — a kind you can't picture staying quiet
 is one nobody would leave switched on. **Any new kind must add at least one loud scenario
-and one silence scenario.** `fixtureSeams` in the test and `testdata/fixture/.thresh/thresh.cue`
+and one silence scenario.** `fixtureSeams` in the test and `testdata/fixture/.thresh/thresh.yaml`
 must declare the same seams; `TestAnnotationsValidate` enforces it. Scenario edits use
 `replace()`, which fails loudly on fixture drift rather than passing vacuously.
 
@@ -96,7 +98,6 @@ test loop.
 - `references-resolve`: a softer note when a *referenced* CUE element changes and the Go
   side didn't.
 - Globs are `filepath.Match` (no `**`).
-- In-process CUE (cuelang Go API) only if schema work needs it; shelling out is deliberate.
 - Dogfood: a `.thresh/` for this repo.
 - TypeScript extractors. The ynab-amazon pilot (first TS repo) has two real choke points
   thresh can't express because `choke-point` reads Go only: all YNAB writes go through one
