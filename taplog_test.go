@@ -49,10 +49,10 @@ func TestTapIdentityLevel(t *testing.T) {
 	logTo(t)
 	dir := fixture(t)
 	replace(t, dir, "schemas/contract.cue",
-		"{version: [1, 0], schema: {b: int}},",
-		"{version: [1, 0], schema: {b: int}},\n\t\t{version: [1, 1], schema: {b: int, d?: string}},")
+		"\t\t\"1\": \"0\": {\n\t\t\tschema: {b: int}\n\t\t}\n",
+		"\t\t\"1\": \"0\": {\n\t\t\tschema: {b: int}\n\t\t}\n\t\t\"1\": \"1\": {\n\t\t\tschema: {b: int, d?: string}\n\t\t}\n")
 	note := tapFor(t, runJSON(t, dir, options{}), "lineages")
-	replace(t, dir, "schemas/contract.cue", "{version: [1, 1],", "{version: [2, 0],")
+	replace(t, dir, "schemas/contract.cue", "\"1\": \"1\": {", "\"2\": \"0\": {")
 	loud := tapFor(t, runJSON(t, dir, options{}), "lineages")
 	if note.Level == loud.Level {
 		t.Fatalf("expected different levels, both %q", note.Level)

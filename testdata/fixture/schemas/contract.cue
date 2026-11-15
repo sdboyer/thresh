@@ -1,9 +1,13 @@
 package fixture
 
-// A versioned contract (thema-shaped: the author declares version tuples).
+// A versioned contract (thema-shaped: each schema is keyed by its version).
 contract: {
-	schemas: [
-		{version: [0, 0], schema: {a: string}},
-		{version: [1, 0], schema: {b: int}},
-	]
+	schemas: {
+		"0": "0": {
+			schema: {a: string}
+		}
+		"1": "0": {
+			schema: {b: int}
+		}
+	}
 }
