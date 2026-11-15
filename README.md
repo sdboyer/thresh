@@ -86,7 +86,7 @@ go install github.com/sdboyer/thresh@latest
 ```sh
 thresh init               # scaffold .thresh/thresh.yaml (every kind as an example)
 thresh check              # uncommitted working tree vs HEAD (includes untracked files)
-thresh check main..HEAD   # a commit range
+thresh check main..HEAD   # the commits on HEAD since it left main, from their merge base (A...B is the same)
 thresh check --json
 thresh check --session S --new   # only taps this session hasn't been told about (the delivery hook)
 thresh explain            # render the seams as agent guidance; pipe into AGENTS.md
@@ -129,11 +129,12 @@ tree of whatever git repo you're in.
 Every tap carries an ID (`#05d3ff82b7c0` in text, `id` in `--json`), and every `check` that
 taps something appends it to a per-user log: `$THRESH_LOG`, default
 `$XDG_STATE_HOME/thresh/taps.jsonl` (`~/.local/state/...`). A tap's identity is the repo's
-root commit, the base commit, kind, seam, file and level. The same crossing re-checked every
-turn is one tap, even as its message drifts; a new base is a new tap. Each record also carries
-provenance: the origin remote, checkout path, base/head, session and transcript (when the
-hooks pass them), the seam's config hash, and the thresh revision. Events have unique IDs and
-hosts, so logs from many machines merge by concatenation.
+root commit, the base commit (HEAD for the working tree; the merge base for a range), kind,
+seam, file and level. The same crossing re-checked every turn is one tap, even as its message
+drifts; a new base is a new tap. Each record also carries provenance: the origin remote,
+checkout path, base/head, session and transcript (when the hooks pass them), the seam's config
+hash, and the thresh revision. Events have unique IDs and hosts, so logs from many machines
+merge by concatenation.
 
 Once it's clear whether a tap was useful, whoever knows records a verdict:
 

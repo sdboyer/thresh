@@ -71,7 +71,7 @@ var kinds = map[string]kind{
 
 type changeset struct {
 	repo     string
-	base     string // ref for "before": HEAD in working-tree mode, A in range mode
+	base     string // ref for "before": HEAD in working-tree mode, merge-base(A, B) in range mode
 	head     string // ref for "after":  "" in working-tree mode (read disk), B in range mode
 	diffspec string // what to pass to `git diff`
 	baseSHA  string // base resolved to a commit
@@ -86,11 +86,26 @@ func newChangeset(repo, rng string) (*changeset, error) {
 	if rng == "" {
 		cs.worktree, cs.base, cs.diffspec = true, "HEAD", "HEAD"
 	} else {
-		parts := strings.SplitN(rng, "..", 2)
-		if len(parts) != 2 {
+		// A..B and A...B both mean the commits on B since it left A, diffed from
+		// their merge base: what moved on A meanwhile is not this change.
+		a, b, ok := strings.Cut(rng, "...")
+		if !ok {
+			a, b, ok = strings.Cut(rng, "..")
+		}
+		if !ok || a == "" || b == "" {
 			return nil, fmt.Errorf("range must be A..B, got %q", rng)
 		}
-		cs.base, cs.head, cs.diffspec = parts[0], parts[1], rng
+		for _, ref := range []string{a, b} {
+			if _, err := cs.resolve(ref); err != nil {
+				return nil, err
+			}
+		}
+		mb, err := cs.git("merge-base", a, b)
+		if err != nil {
+			return nil, fmt.Errorf("%s and %s share no history, so there is no merge base to diff from", a, b)
+		}
+		cs.base, cs.head = strings.TrimSpace(mb), b
+		cs.diffspec = cs.base + ".." + b
 	}
 	out, err := cs.git("diff", "--name-only", cs.diffspec)
 	if err != nil {
