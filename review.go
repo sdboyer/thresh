@@ -126,7 +126,7 @@ func renderPending(w io.Writer, ps []*tapState, asJSON bool) {
 	for _, t := range ps {
 		fmt.Fprintf(w, "#%s [%s: %s] %s (%s)\n    %s\n", t.ID, t.Kind, t.Seam, t.File, t.Level, t.Message)
 		fmt.Fprintf(w, "    repo %s at %s, base %s\n", repoLabel(t.Repo), t.Repo.Toplevel, short(t.Base))
-		fmt.Fprintf(w, "    seen %s → %s (%d sightings), delivered to an agent: %v\n",
+		fmt.Fprintf(w, "    seen %s → %s (%d sightings), delivered by the hook: %v\n",
 			t.FirstSeen.Format("2006-01-02 15:04"), t.LastSeen.Format("2006-01-02 15:04"), t.Sightings, len(t.delivered) > 0)
 		for _, s := range t.Sessions {
 			fmt.Fprintf(w, "    session %s: %s\n", s.Session, s.Transcript)
@@ -139,7 +139,7 @@ func renderPending(w io.Writer, ps []*tapState, asJSON bool) {
 type statRow struct {
 	Group      string   `json:"group"`
 	Taps       int      `json:"taps"`
-	Delivered  int      `json:"delivered"` // told to an agent at least once
+	Delivered  int      `json:"delivered"` // handed to an agent by the delivery hook (check --new) at least once
 	Verdicted  int      `json:"verdicted"`
 	Yes        int      `json:"yes"`
 	No         int      `json:"no"`
@@ -234,7 +234,7 @@ func renderStats(w io.Writer, st stats, asJSON bool) {
 			fmt.Fprintln(w)
 		}
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(tw, "%s\ttaps\tdelivered\tverdicted\tyes\tno\tunclear\tinaccurate\tdisagree\tuseful\n", sec.title)
+		fmt.Fprintf(tw, "%s\ttaps\tvia hook\tverdicted\tyes\tno\tunclear\tinaccurate\tdisagree\tuseful\n", sec.title)
 		for _, r := range sec.rows {
 			useful := "-"
 			if r.UsefulRate != nil {
