@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -516,6 +517,34 @@ func TestRangeFromMergeBase(t *testing.T) {
 	if want := "kernel.cue notes.txt"; strings.Join(cs.changed, " ") != want {
 		t.Errorf("main..side changed files = %v, want %s", cs.changed, want)
 	}
+}
+
+// A check's git processes don't grow with the files it reads: every seam over
+// 30 changed Go files costs what it costs over one.
+func TestGitCallsDontScaleWithFiles(t *testing.T) {
+	calls := func(n int) int {
+		dir := fixture(t)
+		for i := 0; i < n; i++ {
+			write(t, dir, fmt.Sprintf("gen%02d.go", i), fmt.Sprintf("package fixture\n\nvar p%d = cue.MakePath(cue.Str(\"items\"))\n", i))
+		}
+		replace(t, dir, "kernel.cue", "name: string", "name: string\n\tlabel: string")
+		replace(t, dir, "bind.go", "return &guarded{}", "return &guarded{v: 2}")
+		commitAll(t, dir, "many files")
+		cs, err := newChangeset(dir, "HEAD~1..HEAD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range sortedKeys(fixtureSeams) {
+			s := fixtureSeams[name]
+			kinds[s.Kind].assess(name, s, cs)
+		}
+		return cs.calls
+	}
+	one, many := calls(1), calls(30)
+	if one != many {
+		t.Errorf("git calls: %d for 1 changed Go file, %d for 30", one, many)
+	}
+	t.Logf("git calls per check: %d", one)
 }
 
 func git(t *testing.T, dir string, args ...string) {

@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -80,10 +84,17 @@ type changeset struct {
 	worktree bool
 	changed  []string
 	cache    map[string]*changedFile
+
+	// Every git read below runs once per changeset, however many files and seams
+	// ask: a process costs far more than the bytes it returns.
+	lists map[string][]string  // ref ("" = working tree) -> every file in it
+	blob  map[string]string    // "ref:path" -> content, "" where absent
+	diffs map[string]*fileDiff // path -> its hunks, from one diff of the changeset
+	calls int                  // git processes run, for tests
 }
 
 func newChangeset(repo, rng string) (*changeset, error) {
-	cs := &changeset{repo: repo, cache: map[string]*changedFile{}}
+	cs := &changeset{repo: repo, cache: map[string]*changedFile{}, lists: map[string][]string{}, blob: map[string]string{}}
 	if rng == "" {
 		if _, err := cs.resolve("HEAD"); err != nil {
 			return nil, errNoCommits
@@ -172,8 +183,91 @@ func (cs *changeset) resolve(ref string) (string, error) {
 }
 
 func (cs *changeset) git(args ...string) (string, error) {
+	cs.calls++
 	out, err := exec.Command("git", append([]string{"-C", cs.repo}, args...)...).Output()
 	return string(out), err
+}
+
+// list is every file at ref, or in the working tree (tracked and untracked,
+// ignored files aside) for ref "".
+func (cs *changeset) list(ref string) []string {
+	if l, ok := cs.lists[ref]; ok {
+		return l
+	}
+	var out string
+	if ref == "" {
+		out, _ = cs.git("ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	} else {
+		out, _ = cs.git("ls-tree", "-r", "-z", "--name-only", ref)
+	}
+	var l []string
+	seen := map[string]bool{}
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			l = append(l, p)
+		}
+	}
+	cs.lists[ref] = l
+	return l
+}
+
+// blobs reads paths at ref through one git cat-file --batch, memoized. A path
+// absent at ref reads as "".
+func (cs *changeset) blobs(ref string, paths []string) map[string]string {
+	out := map[string]string{}
+	var need []string
+	for _, p := range paths {
+		if b, ok := cs.blob[ref+":"+p]; ok {
+			out[p] = b
+		} else {
+			need = append(need, p)
+		}
+	}
+	if len(need) == 0 {
+		return out
+	}
+	var in strings.Builder
+	for _, p := range need {
+		in.WriteString(ref + ":" + p + "\n")
+	}
+	cmd := exec.Command("git", "-C", cs.repo, "cat-file", "--batch")
+	cmd.Stdin = strings.NewReader(in.String())
+	cs.calls++
+	raw, _ := cmd.Output()
+	r := bufio.NewReader(bytes.NewReader(raw))
+	for _, p := range need {
+		content := ""
+		// "<oid> <type> <size>" then the object and a newline; "<ref:path> missing"
+		// (any other field count) has no body.
+		if hdr, err := r.ReadString('\n'); err == nil {
+			if f := strings.Fields(hdr); len(f) == 3 {
+				if n, err := strconv.Atoi(f[2]); err == nil {
+					buf := make([]byte, n+1)
+					if _, err := io.ReadFull(r, buf); err == nil && f[1] == "blob" {
+						content = string(buf[:n])
+					}
+				}
+			}
+		}
+		cs.blob[ref+":"+p] = content
+		out[p] = content
+	}
+	return out
+}
+
+// diff is every changed file's hunks, from one git diff of the changeset.
+// Renames are not paired, so each file's hunks are those a diff of it alone shows.
+func (cs *changeset) diff(path string) *fileDiff {
+	if cs.diffs == nil {
+		out, _ := cs.git("diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff",
+			"--src-prefix=a/", "--dst-prefix=b/", cs.diffspec)
+		cs.diffs = parseDiff(out)
+	}
+	if d, ok := cs.diffs[path]; ok {
+		return d
+	}
+	return &fileDiff{Added: map[int]bool{}}
 }
 
 func matchAny(globs []string, path string) bool {
@@ -202,17 +296,17 @@ func (cs *changeset) file(path string) changedFile {
 		return *f
 	}
 	f := &changedFile{Path: path}
-	f.Before, _ = cs.git("show", cs.base+":"+path)
+	f.Before = cs.blobs(cs.base, cs.changed)[path] // every changed file in one read
 	if cs.worktree {
 		b, _ := os.ReadFile(filepath.Join(cs.repo, path))
 		f.After = string(b)
 	} else {
-		f.After, _ = cs.git("show", cs.head+":"+path)
+		f.After = cs.blobs(cs.head, cs.changed)[path]
 	}
 	if f.Before == "" {
 		f.Changed = allLines(f.After) // new file: every line is new
 	} else {
-		f.Changed = addedLines(cs, path)
+		f.Changed = cs.diff(path).Added
 	}
 	cs.cache[path] = f
 	return *f
@@ -230,28 +324,23 @@ func (cs *changeset) atBase(globs []string) map[string]string {
 }
 
 func (cs *changeset) contentAt(globs []string, ref string) map[string]string {
-	out := map[string]string{}
-	var list string
-	if ref == "" && cs.worktree {
-		t, _ := cs.git("ls-files")
-		u, _ := cs.git("ls-files", "--others", "--exclude-standard")
-		list = t + "\n" + u
-	} else {
-		if ref == "" {
-			ref = cs.head
-		}
-		list, _ = cs.git("ls-tree", "-r", "--name-only", ref)
+	disk := ref == "" && cs.worktree
+	if ref == "" && !cs.worktree {
+		ref = cs.head
 	}
-	for _, p := range strings.Split(strings.TrimSpace(list), "\n") {
-		if p == "" || !matchAny(globs, p) {
-			continue
+	var paths []string
+	for _, p := range cs.list(ref) {
+		if matchAny(globs, p) {
+			paths = append(paths, p)
 		}
-		if ref == "" && cs.worktree {
-			b, _ := os.ReadFile(filepath.Join(cs.repo, p))
-			out[p] = string(b)
-		} else {
-			out[p], _ = cs.git("show", ref+":"+p)
-		}
+	}
+	if !disk {
+		return cs.blobs(ref, paths)
+	}
+	out := map[string]string{}
+	for _, p := range paths {
+		b, _ := os.ReadFile(filepath.Join(cs.repo, p))
+		out[p] = string(b)
 	}
 	return out
 }
