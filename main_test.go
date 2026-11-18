@@ -106,3 +106,110 @@ func TestNoCommitsYet(t *testing.T) {
 		t.Errorf("unborn HEAD:\n%s", got)
 	}
 }
+
+// A working-tree check reads every kind of difference from HEAD in one status:
+// staged, unstaged, deleted, untracked, removed from the index but kept on disk,
+// and paths git would otherwise quote.
+func TestWorktreeChangedFiles(t *testing.T) {
+	dir := fixture(t)
+	replace(t, dir, "bind.go", "return &guarded{}", "return &guarded{v: 2}")
+	replace(t, dir, "kernel.cue", "name: string", "name: string\n\tlabel: string")
+	git(t, dir, "add", "kernel.cue")
+	if err := os.Remove(filepath.Join(dir, "shapes.cue")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "rm", "-q", "--cached", "other.go")
+	write(t, dir, "notes and more.txt", "x\n")
+	write(t, dir, "café/menu.txt", "x\n")
+
+	before := gitCalls
+	cs, err := newChangeset(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := gitCalls - before; n != 1 {
+		t.Errorf("reading the working tree's changes ran git %d times, want 1", n)
+	}
+	got := map[string]bool{}
+	for _, p := range cs.changed {
+		if got[p] {
+			t.Errorf("%s listed twice", p)
+		}
+		got[p] = true
+	}
+	for _, p := range []string{"bind.go", "kernel.cue", "shapes.cue", "other.go", "notes and more.txt", "café/menu.txt"} {
+		if !got[p] {
+			t.Errorf("%s missing from changed files %q", p, cs.changed)
+		}
+	}
+	if len(got) != 6 {
+		t.Errorf("changed files = %q, want exactly 6", cs.changed)
+	}
+	head, _ := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if want := strings.TrimSpace(string(head)); cs.baseSHA != want || cs.base != want {
+		t.Errorf("base %q, baseSHA %q, want both %s", cs.base, cs.baseSHA, want)
+	}
+}
+
+func TestParseStatus(t *testing.T) {
+	out := strings.Join([]string{
+		"# branch.oid 1111111111111111111111111111111111111111",
+		"# branch.head main",
+		"1 .M N... 100644 100644 100644 aaaa aaaa a file.go",
+		"u UU N... 100644 100644 100644 100644 bbbb cccc dddd con flict.cue",
+		"? new.txt",
+		"",
+	}, "\x00")
+	oid, paths, err := parseStatus(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oid != "1111111111111111111111111111111111111111" || strings.Join(paths, "|") != "a file.go|con flict.cue|new.txt" {
+		t.Errorf("got %q, %q", oid, paths)
+	}
+	if oid, _, _ := parseStatus("# branch.oid (initial)\x00# branch.head main\x00? a\x00"); oid != "" {
+		t.Errorf("unborn HEAD gave oid %q", oid)
+	}
+	for _, bad := range []string{"1 .M N... 100644 100644 100644 aaaa aaaa\x00", "2 R. N... 100644 100644 100644 a a R100 new\x00old\x00"} {
+		if _, _, err := parseStatus(bad); err == nil {
+			t.Errorf("parseStatus(%q) accepted an entry it cannot read", bad)
+		}
+	}
+}
+
+// A check that finds no taps needs neither the repo's identity nor the tap log:
+// one git run for a change outside every seam, and no log to fail on. With a
+// tap, the same unusable log is reported, so the silence isn't vacuous.
+func TestNoTapsReadNoIdentityOrLog(t *testing.T) {
+	dir := fixture(t)
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("THRESH_LOG", filepath.Join(blocker, "taps.jsonl")) // unusable: its parent is a file
+	run := func() (stdout, stderr string, calls int) {
+		t.Helper()
+		var o, e strings.Builder
+		before := gitCalls
+		if err := runCheck(options{repo: dir, session: "s", deliver: true}, config{Seams: fixtureSeams}, &o, &e); err != nil {
+			t.Fatal(err)
+		}
+		return o.String(), e.String(), gitCalls - before
+	}
+
+	write(t, dir, "notes.txt", "outside every seam\n")
+	if out, errs, calls := run(); out != "" || errs != "" || calls != 1 {
+		t.Errorf("change outside the seams: %d git runs (want 1), stdout %q, stderr %q", calls, out, errs)
+	}
+
+	// status, the changed files at base, their hunks
+	replace(t, dir, "bind.go", "// Literal references into the CUE kernel.", "// Literal references into the CUE kernel, by path.")
+	if out, errs, calls := run(); out != "" || errs != "" || calls != 3 {
+		t.Errorf("comment-only Go edit: %d git runs (want 3), stdout %q, stderr %q", calls, out, errs)
+	}
+
+	replace(t, dir, "kernel.cue", "name: string", "name: string\n\tlabel: string")
+	if out, errs, _ := run(); !strings.Contains(out, "## Thresh") || !strings.Contains(errs, "tap log not written") {
+		t.Errorf("kernel change: stdout %q, stderr %q", out, errs)
+	}
+}

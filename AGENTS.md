@@ -109,7 +109,7 @@ only when asked.
   function that holds a dry-run gate, and credentials are read in one function. That repo
   enforces both with ESLint for now; TS construction/call-site extractors would let
   `choke-point` own them.
-- The tap log is read in full on every `check --new` (each edit, via the delivery hook).
+- The tap log is read in full on every `check --new` that finds taps (each edit, via the delivery hook).
   Fine at current volumes; compaction or an index when it isn't.
 - A worktree-mode run and a range-mode run over the same change resolve different bases,
   so they log the same crossing under different tap IDs.
