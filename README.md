@@ -143,8 +143,12 @@ Once it's clear whether a tap was useful, whoever knows records a verdict:
 thresh verdict 05d3ff --by origin --useful yes --evidence "moved the construction into Build"
 thresh verdict 05d3ff --by sweep  --inaccurate  --evidence "Sneaky() constructs *other*, not guarded"
 thresh pending [--repo DIR] [--json]    # taps nobody has given a verdict on
-thresh stats [--json]                   # by kind, repo and seam: delivered, verdicted, yes/no/unclear, inaccurate, useful rate
+thresh stats [--json]                   # by kind, repo and seam: via hook, verdicted, yes/no/unclear, inaccurate, useful rate
 ```
+
+`stats`' **via hook** column (`delivered` in `--json`) is the share of taps the delivery hook
+handed to an agent. A tap an agent saw by running `thresh check` itself isn't counted there,
+so it can sit far below **verdicted**: the verdicts show the taps reached someone.
 
 - **yes**: the tap caused or confirmed something observable: the diff changed, a co-owner
   was consulted, a version or compatibility decision was revisited, or the crossing was
