@@ -4,7 +4,7 @@ import "fmt"
 
 // references-resolve: Go reaches into CUE by literal paths (cue.Str, cue.Def,
 // cue.Hid). Fire when a reference no longer resolves in the CUE — the scoped
-// replacement for file-level co-change. Evaluated whenever either side changed,
+// replacement for file-level co-change. Evaluated whenever either side was touched,
 // against the CURRENT content of all files on both sides (a CUE rename breaks
 // references in Go files this changeset never touched). Fires on wrongness.
 //
@@ -14,7 +14,7 @@ import "fmt"
 type referencesResolve struct{}
 
 func (referencesResolve) assess(name string, s seam, cs *changeset) []signal {
-	if !cs.touchedAny(s.Go) && !cs.touchedAny(s.Cue) {
+	if !anyTouched(cs.under(s.Go)) && !anyTouched(cs.under(s.Cue)) {
 		return nil
 	}
 	now := cueLabels(cs.current(s.Cue))

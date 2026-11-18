@@ -90,65 +90,113 @@ type changeset struct {
 	lists map[string][]string  // ref ("" = working tree) -> every file in it
 	blob  map[string]string    // "ref:path" -> content, "" where absent
 	diffs map[string]*fileDiff // path -> its hunks, from one diff of the changeset
-	calls int                  // git processes run, for tests
 }
+
+// gitCalls counts git processes run, for tests.
+var gitCalls int
 
 func newChangeset(repo, rng string) (*changeset, error) {
 	cs := &changeset{repo: repo, cache: map[string]*changedFile{}, lists: map[string][]string{}, blob: map[string]string{}}
 	if rng == "" {
-		if _, err := cs.resolve("HEAD"); err != nil {
+		// One status read names HEAD and every file that differs from it, staged,
+		// unstaged or untracked. The base is that commit, not "HEAD", so every
+		// later read sees the same commit even if HEAD moves meanwhile.
+		out, err := cs.git("--no-optional-locks", "status", "--porcelain=v2", "-z",
+			"--no-renames", "--untracked-files=all", "--branch")
+		if err != nil {
+			return nil, fmt.Errorf("git status failed: %v", gitErr(err))
+		}
+		oid, changed, err := parseStatus(out)
+		if err != nil {
+			return nil, err
+		}
+		if oid == "" {
 			return nil, errNoCommits
 		}
-		cs.worktree, cs.base, cs.diffspec = true, "HEAD", "HEAD"
-	} else {
-		// A..B and A...B both mean the commits on B since it left A, diffed from
-		// their merge base: what moved on A meanwhile is not this change.
-		a, b, ok := strings.Cut(rng, "...")
-		if !ok {
-			a, b, ok = strings.Cut(rng, "..")
-		}
-		if !ok || a == "" || b == "" {
-			return nil, fmt.Errorf("range must be A..B, got %q", rng)
-		}
-		for _, ref := range []string{a, b} {
-			if _, err := cs.resolve(ref); err != nil {
-				return nil, err
-			}
-		}
-		mb, err := cs.git("merge-base", a, b)
-		if err != nil {
-			return nil, fmt.Errorf("%s and %s share no history, so there is no merge base to diff from", a, b)
-		}
-		cs.base, cs.head = strings.TrimSpace(mb), b
-		cs.diffspec = cs.base + ".." + b
+		cs.worktree, cs.base, cs.baseSHA, cs.diffspec, cs.changed = true, oid, oid, oid, changed
+		return cs, nil
 	}
-	out, err := cs.git("diff", "--name-only", cs.diffspec)
-	if err != nil {
-		return nil, fmt.Errorf("git diff failed: %v", err)
+	// A..B and A...B both mean the commits on B since it left A, diffed from
+	// their merge base: what moved on A meanwhile is not this change.
+	a, b, ok := strings.Cut(rng, "...")
+	if !ok {
+		a, b, ok = strings.Cut(rng, "..")
 	}
-	seen := map[string]bool{}
-	add := func(s string) {
-		for _, l := range strings.Split(strings.TrimSpace(s), "\n") {
-			if l != "" && !seen[l] {
-				seen[l] = true
-				cs.changed = append(cs.changed, l)
-			}
-		}
+	if !ok || a == "" || b == "" {
+		return nil, fmt.Errorf("range must be A..B, got %q", rng)
 	}
-	add(out)
-	if cs.worktree { // `git diff` omits untracked new files
-		u, _ := cs.git("ls-files", "--others", "--exclude-standard")
-		add(u)
-	}
-	if cs.baseSHA, err = cs.resolve(cs.base); err != nil {
-		return nil, err
-	}
-	if !cs.worktree {
-		if cs.headSHA, err = cs.resolve(cs.head); err != nil {
+	for _, ref := range []string{a, b} {
+		if _, err := cs.resolve(ref); err != nil {
 			return nil, err
 		}
 	}
+	mb, err := cs.git("merge-base", a, b)
+	if err != nil {
+		return nil, fmt.Errorf("%s and %s share no history, so there is no merge base to diff from", a, b)
+	}
+	cs.base, cs.head = strings.TrimSpace(mb), b
+	cs.baseSHA, cs.diffspec = cs.base, cs.base+".."+b
+	out, err := cs.git("diff", "--name-only", "-z", cs.diffspec)
+	if err != nil {
+		return nil, fmt.Errorf("git diff failed: %v", gitErr(err))
+	}
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			cs.changed = append(cs.changed, p)
+		}
+	}
+	if cs.headSHA, err = cs.resolve(cs.head); err != nil {
+		return nil, err
+	}
 	return cs, nil
+}
+
+// parseStatus reads `git status --porcelain=v2 -z --branch --no-renames`: the
+// commit HEAD names ("" when it names none yet) and every path the status lists,
+// once: a path removed from the index but kept on disk is listed both ways.
+func parseStatus(out string) (oid string, paths []string, err error) {
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	for _, rec := range strings.Split(out, "\x00") {
+		var f []string
+		switch {
+		case rec == "":
+			continue
+		case strings.HasPrefix(rec, "# branch.oid "):
+			if oid = strings.TrimPrefix(rec, "# branch.oid "); oid == "(initial)" {
+				oid = ""
+			}
+			continue
+		case strings.HasPrefix(rec, "# "):
+			continue
+		case strings.HasPrefix(rec, "? "):
+			add(rec[2:])
+			continue
+		case strings.HasPrefix(rec, "1 "):
+			f = strings.SplitN(rec, " ", 9) // 1 XY sub mH mI mW hH hI path
+		case strings.HasPrefix(rec, "u "):
+			f = strings.SplitN(rec, " ", 11) // u XY sub m1 m2 m3 mW h1 h2 h3 path
+		}
+		if len(f) == 0 || f[len(f)-1] == "" || (f[0] == "1" && len(f) != 9) || (f[0] == "u" && len(f) != 11) {
+			return "", nil, fmt.Errorf("unexpected git status entry %q", rec)
+		}
+		add(f[len(f)-1])
+	}
+	return oid, paths, nil
+}
+
+// gitErr is a failed git run's own explanation, when it gave one.
+func gitErr(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && len(bytes.TrimSpace(ee.Stderr)) > 0 {
+		return errors.New(string(bytes.TrimSpace(ee.Stderr)))
+	}
+	return err
 }
 
 // errNoCommits is a working-tree check in a repo whose HEAD has no commit yet:
@@ -183,7 +231,7 @@ func (cs *changeset) resolve(ref string) (string, error) {
 }
 
 func (cs *changeset) git(args ...string) (string, error) {
-	cs.calls++
+	gitCalls++
 	out, err := exec.Command("git", append([]string{"-C", cs.repo}, args...)...).Output()
 	return string(out), err
 }
@@ -233,7 +281,7 @@ func (cs *changeset) blobs(ref string, paths []string) map[string]string {
 	}
 	cmd := exec.Command("git", "-C", cs.repo, "cat-file", "--batch")
 	cmd.Stdin = strings.NewReader(in.String())
-	cs.calls++
+	gitCalls++
 	raw, _ := cmd.Output()
 	r := bufio.NewReader(bytes.NewReader(raw))
 	for _, p := range need {

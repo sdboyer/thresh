@@ -530,6 +530,7 @@ func TestGitCallsDontScaleWithFiles(t *testing.T) {
 		replace(t, dir, "kernel.cue", "name: string", "name: string\n\tlabel: string")
 		replace(t, dir, "bind.go", "return &guarded{}", "return &guarded{v: 2}")
 		commitAll(t, dir, "many files")
+		before := gitCalls
 		cs, err := newChangeset(dir, "HEAD~1..HEAD")
 		if err != nil {
 			t.Fatal(err)
@@ -538,7 +539,7 @@ func TestGitCallsDontScaleWithFiles(t *testing.T) {
 			s := fixtureSeams[name]
 			kinds[s.Kind].assess(name, s, cs)
 		}
-		return cs.calls
+		return gitCalls - before
 	}
 	one, many := calls(1), calls(30)
 	if one != many {

@@ -145,10 +145,6 @@ func runCheck(o options, cfg config, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	id, err := cs.identify()
-	if err != nil {
-		return err
-	}
 	var signals []signal
 	for _, name := range sortedKeys(cfg.Seams) { // seams evaluate independently
 		s := cfg.Seams[name]
@@ -156,25 +152,33 @@ func runCheck(o options, cfg config, stdout, stderr io.Writer) error {
 		if !ok {
 			return fmt.Errorf("seam %q: unknown kind %q", name, s.Kind)
 		}
-		for _, sig := range k.assess(name, s, cs) {
-			sig.ID = tapID(id.Root, cs.baseSHA, sig)
-			signals = append(signals, sig)
-		}
+		signals = append(signals, k.assess(name, s, cs)...)
 	}
 
-	path, err := logPath()
-	if err == nil {
-		err = recordSightings(path, cfg, cs, id, signals, o.session, o.transcript)
-	}
-	if err != nil {
-		fmt.Fprintf(stderr, "thresh: tap log not written: %v\n", err)
-	}
-	if o.deliver {
+	// Taps are identified and logged; with none, there is nothing to identify,
+	// record or deliver, so neither the repo's identity nor the log is read.
+	if len(signals) > 0 {
+		id, err := cs.identify()
+		if err != nil {
+			return err
+		}
+		for i := range signals {
+			signals[i].ID = tapID(id.Root, cs.baseSHA, signals[i])
+		}
+		path, err := logPath()
 		if err == nil {
-			signals, err = undelivered(path, o.session, signals)
+			err = recordSightings(path, cfg, cs, id, signals, o.session, o.transcript)
 		}
 		if err != nil {
-			fmt.Fprintf(stderr, "thresh: tap log unreadable, delivering every tap: %v\n", err)
+			fmt.Fprintf(stderr, "thresh: tap log not written: %v\n", err)
+		}
+		if o.deliver {
+			if err == nil {
+				signals, err = undelivered(path, o.session, signals)
+			}
+			if err != nil {
+				fmt.Fprintf(stderr, "thresh: tap log unreadable, delivering every tap: %v\n", err)
+			}
 		}
 	}
 

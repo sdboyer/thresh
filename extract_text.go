@@ -38,6 +38,15 @@ func touched(f changedFile) bool {
 	return stripNoise(f.Before) != stripNoise(f.After)
 }
 
+func anyTouched(fs []changedFile) bool {
+	for _, f := range fs {
+		if touched(f) {
+			return true
+		}
+	}
+	return false
+}
+
 // fileDiff is one file's hunks: the line numbers added or modified on the new
 // side, and the content of every added and removed line.
 type fileDiff struct {
